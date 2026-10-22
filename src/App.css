@@ -1,0 +1,1094 @@
+/* Bangla text uses Nikosh (public/fonts/Nikosh.ttf). English text uses Inter (the first font in the list),
+   so every Bangla glyph falls through to Nikosh. */
+@font-face {
+  font-family: "Nikosh";
+  /* an installed copy is used first; the file in public/fonts is the fallback */
+  src: local("Nikosh"), url("/fonts/Nikosh.ttf") format("truetype");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "SutonnyOMJ";
+  src: local("SutonnyOMJ"), url("/fonts/SutonnyOMJ Regular.ttf") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  --accent: #2563eb;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #cbd5e1;
+}
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Inter", "Anek Bangla", "Noto Sans Bengali", "Hind Siliguri", "SutonnyOMJ", "Nikosh", system-ui, sans-serif;
+  background: #dde3ed;
+  color: var(--ink);
+}
+
+/* a sheet zoomed bigger than the screen scrolls sideways inside the app, the page itself does not shrink */
+.app { --sw: 0px; padding: calc(var(--tbh, 56px) + 12px) 8px 120px calc(var(--sw) + 8px); overflow-x: auto; touch-action: pan-x pan-y; /* the browser does not zoom the page; two fingers zoom the paper */ }
+.pinch-badge {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, .85);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25);
+}
+
+/* ================= app shell: top bar, tool panel on the left, floating context bar ================= */
+:root {
+  --accent-d: #1d4ed8;
+  --accent-soft: #e8efff;
+  --hair: #e4e9f1;
+  --panel-2: #f5f7fb;
+  --tbh: 56px;
+  --sidew: 296px;
+  --railw: 64px;
+}
+
+/* ---------- top bar ---------- */
+.topbar {
+  position: fixed;
+  inset: 0 0 auto 0;
+  z-index: 50;
+  height: var(--tbh);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px 0 10px;
+  background: #fff;
+  border-bottom: 1px solid var(--hair);
+  box-shadow: 0 4px 14px -8px rgba(15, 23, 42, .2);
+}
+.icon-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+.icon-btn:hover { background: var(--panel-2); border-color: var(--hair); }
+.icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.brand { display: flex; align-items: center; gap: 10px; flex: none; min-width: 0; }
+.brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--accent); color: #fff; }
+.brand-t { display: flex; flex-direction: column; line-height: 1.25; }
+.brand-t h1 { margin: 0; font-size: 17px; font-weight: 750; }
+.top-sub { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+
+.status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+.status::-webkit-scrollbar { display: none; }
+.status > :first-child { margin-left: auto; }
+.status > :last-child { margin-right: auto; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--hair);
+  font-size: 13.5px;
+  color: #2b3750;
+}
+.chip b { color: var(--ink); font-weight: 750; font-variant-numeric: tabular-nums; }
+.chip.warn-chip { background: #fff6e0; border-color: #f3cf86; color: #8a4b08; }
+.status .tbtn { flex: none; }
+.top-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.top-actions .tbtn { min-height: 36px; }
+
+/* ---------- buttons ---------- */
+.ic { flex: none; display: block; }
+.tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, border-color .12s;
+}
+.tbtn:hover:not(:disabled) { background: #f0f4fb; border-color: #aab6c8; }
+.tbtn:active:not(:disabled) { background: #e6ecf7; }
+.tbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tbtn:disabled { opacity: .5; cursor: not-allowed; }
+.tbtn.on { background: var(--accent-soft); border-color: #9db8f5; color: var(--accent-d); }
+.tbtn.primary { background: var(--accent); border-color: var(--accent-d); color: #fff; }
+.tbtn.primary:hover:not(:disabled) { background: var(--accent-d); border-color: var(--accent-d); }
+.tbtn.accent { background: #15803d; border-color: #166534; color: #fff; font-weight: 700; }
+.tbtn.accent:hover:not(:disabled) { background: #166534; border-color: #166534; }
+.tbtn.danger { color: #b91c1c; }
+.tbtn.danger:hover:not(:disabled) { background: #fef2f2; border-color: #f0b4b4; }
+.tbtn.small { min-height: 28px; min-width: 28px; padding: 0 9px; font-size: 14px; }
+.tbtn.wide { width: 100%; justify-content: flex-start; }
+
+/* ---------- selects ---------- */
+select.langsel, select.sizesel, select.fontsel, select.basesel {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 30px 0 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--ink);
+  background-color: #fff;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237b879b' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+}
+select.langsel:hover, select.sizesel:hover, select.fontsel:hover, select.basesel:hover { border-color: #aab6c8; }
+select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus-visible, select.basesel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---------- small controls used in the panel ---------- */
+.tb-label { font-size: 13px; color: var(--muted); }
+.sep { flex: none; width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+.grow { flex: 1; }
+.warn { color: #b45309; }
+.step { display: flex; align-items: center; gap: 6px; }
+.step .tb-label { margin-right: auto; font-size: 13.5px; font-weight: 550; color: var(--ink); }
+.step-val { min-width: 3.6em; text-align: center; font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.tb-deg { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--muted); }
+.tb-deg input { width: 4.6em; padding: 4px 6px; font: inherit; color: inherit; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+
+/* a joined row of buttons */
+.seg { display: inline-flex; background: #fff; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg.fill { display: flex; }
+.seg.fill > .tbtn { flex: 1 1 0; }
+.seg .tbtn { min-height: 34px; padding: 0 10px; background: transparent; border: 0; border-radius: 0; }
+.seg .tbtn + .tbtn { border-left: 1px solid var(--hair); }
+.seg .tbtn:hover:not(:disabled) { background: var(--panel-2); }
+.seg .tbtn.on { background: var(--accent-soft); color: var(--accent-d); }
+.seg .tb-hint { display: grid; place-items: center; min-width: 54px; padding: 0 6px; font-size: 13px; font-weight: 650; color: var(--ink); font-variant-numeric: tabular-nums; border-left: 1px solid var(--hair); }
+.seg .tb-hint + .tbtn { border-left: 1px solid var(--hair); }
+
+/* ---------- tool panel (left) ---------- */
+.side {
+  position: fixed;
+  z-index: 60;
+  top: var(--tbh);
+  bottom: 0;
+  left: 0;
+  width: var(--sidew);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-right: 1px solid var(--hair);
+}
+.side-head { display: none; align-items: center; justify-content: space-between; padding: 6px 8px 6px 16px; border-bottom: 1px solid var(--hair); font-size: 15px; }
+.side-scroll { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #c3ccda transparent; padding-bottom: 28px; }
+
+.grp { border-bottom: 1px solid var(--hair); }
+.grp-h {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 700;
+  text-align: left;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.grp-h:hover { background: var(--panel-2); }
+.grp-h:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.grp-ic { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent-d); }
+.grp-t { flex: 1; }
+.chev { flex: none; width: 8px; height: 8px; margin-right: 4px; border-right: 2px solid #7b879b; border-bottom: 2px solid #7b879b; transform: rotate(-45deg); transition: transform .2s ease; }
+.grp.open .chev { transform: rotate(45deg); }
+.grp-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .22s ease; }
+.grp.open .grp-body { grid-template-rows: 1fr; }
+.grp-in { min-height: 0; overflow: hidden; visibility: hidden; transition: visibility 0s linear .22s; }
+.grp.open .grp-in { visibility: visible; transition-delay: 0s; }
+.grp-pad { display: flex; flex-direction: column; gap: 10px; padding: 4px 14px 16px; }
+
+.fld { display: flex; flex-direction: column; gap: 6px; }
+.fld-l, .side .pick .tb-label, .sub { font-size: 12.5px; font-weight: 650; color: var(--muted); }
+.sub { margin-top: 4px; padding-top: 10px; border-top: 1px solid var(--hair); }
+.side .pick { display: flex; flex-direction: column; gap: 6px; }
+.ctl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ctl-row > .menu { flex: 1 1 40%; min-width: 0; }
+.ctl-row > .menu.open { flex-basis: 100%; }
+.stack { display: flex; flex-direction: column; gap: 8px; }
+.stack .menu > .tbtn, .ctl-row .menu > .tbtn { width: 100%; }
+
+/* big action tiles: icon over a short label */
+.tiles { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-flow: row dense; gap: 8px; }
+.tiles.c2 { grid-template-columns: repeat(2, 1fr); }
+.tile, .tiles .menu > .tbtn {
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 4px;
+  font-size: 12.5px;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+}
+.tile.big { grid-column: 1 / -1; flex-direction: row; min-height: 42px; gap: 8px; font-size: 14.5px; }
+.tiles .menu { display: flex; flex-direction: column; min-width: 0; }
+.tiles .menu > .tbtn { position: relative; flex: 1; }
+.tiles .menu .caret { position: absolute; top: 9px; right: 8px; margin: 0; }
+.tiles .menu.open { grid-column: 1 / -1; }
+
+/* ---------- drop-down menus (they open inside the panel) ---------- */
+.menu { position: relative; }
+.caret { flex: none; width: 6px; height: 6px; margin: 0 0 3px 2px; border-right: 1.8px solid currentColor; border-bottom: 1.8px solid currentColor; opacity: .65; transform: rotate(45deg); transition: transform .15s; }
+.menu.open .caret { margin-bottom: -2px; transform: rotate(225deg); }
+.menu-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 40;
+  min-width: 260px;
+  padding: 6px;
+  background: #fff;
+  border: 1px solid var(--hair);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .18);
+}
+.menu-pop.wide { width: min(360px, 88vw); }
+.side .menu-pop, .side .menu-pop.wide { position: static; width: 100%; min-width: 0; margin-top: 8px; background: var(--panel-2); border-radius: 10px; box-shadow: none; }
+.menu-hint { padding: 2px 6px 6px; font-size: 12px; line-height: 1.55; color: var(--muted); }
+.menu-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 8px 10px; font: inherit; text-align: left; background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.menu-item:hover { background: #e7eefb; }
+.menu-item.on { background: var(--accent-soft); }
+.menu-item.on b::before { content: '✓ '; color: var(--accent-d); }
+.menu-item small { font-size: 12px; color: var(--muted); }
+.menu-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 6px 8px; }
+.symgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+.sym { padding: 6px 0; font: inherit; font-size: 17px; background: #fff; border: 1px solid var(--hair); border-radius: 6px; cursor: pointer; }
+.sym:hover { background: var(--accent-soft); }
+
+/* ---------- floating bar for the selected object (block, text box, picture, formula, table) ---------- */
+.dock-wrap { position: fixed; z-index: 45; left: var(--sw); right: 0; bottom: 12px; display: flex; justify-content: center; padding: 0 12px; pointer-events: none; }
+.ctxdock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  max-width: min(960px, 100%);
+  max-height: 42vh;
+  overflow-y: auto;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid var(--hair);
+  border-top: 3px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: 0 14px 36px -10px rgba(15, 23, 42, .35), 0 2px 6px rgba(15, 23, 42, .08);
+  pointer-events: auto;
+}
+.ctx-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 6px; background: var(--panel-2); border-radius: 10px; }
+.ctx-row > .tb-label:first-child { margin-right: 2px; font-weight: 700; color: var(--accent-d); }
+.ctx-row .tbtn { min-height: 32px; padding: 0 10px; font-size: 13.5px; }
+
+.toast {
+  position: fixed;
+  z-index: 70;
+  top: calc(var(--tbh) + 12px);
+  left: 50%;
+  max-width: 90vw;
+  padding: 9px 18px;
+  font-size: 14px;
+  color: #fff;
+  background: #0f1b33;
+  border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .3);
+  transform: translateX(-50%);
+  animation: toast-in .18s ease-out;
+}
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, -6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+.scrim { display: none; }
+
+/* ---------- wide screens: the panel stays on the left, or shrinks to an icon rail ---------- */
+@media (min-width: 1180px) {
+  .app.side-open { --sw: var(--sidew); }
+  .app.side-rail { --sw: var(--railw); }
+  .side.rail { width: var(--railw); }
+  .side.rail .grp { border-bottom: 0; }
+  .side.rail .side-scroll { padding-top: 8px; }
+  .side.rail .grp-h { justify-content: center; min-height: 54px; padding: 0; }
+  .side.rail .grp-t, .side.rail .chev, .side.rail .grp-body { display: none; }
+}
+
+/* ---------- narrow screens: the panel is a drawer ---------- */
+@media (max-width: 1179px) {
+  .side { width: min(88vw, 330px); transform: translateX(-104%); transition: transform .22s ease; }
+  .side.open { transform: none; box-shadow: 10px 0 36px rgba(15, 23, 42, .3); }
+  .side-head { display: flex; }
+  .scrim.show { display: block; position: fixed; z-index: 55; inset: var(--tbh) 0 0 0; background: rgba(15, 23, 42, .42); }
+}
+@media (max-width: 900px) {
+  .top-sub, .top-actions .lbl { display: none; }
+  .top-actions .tbtn { padding: 0 10px; }
+}
+@media (max-width: 700px) {
+  .topbar { gap: 8px; padding: 0 8px 0 6px; }
+  .brand { display: none; }
+  .chip .lg { display: none; }
+  .chip { padding: 0 10px; }
+  .tbtn { min-height: 40px; }
+  .tbtn.small, .ctx-row .tbtn { min-height: 36px; }
+  .dock-wrap { bottom: 8px; padding: 0 8px; }
+  .ctxdock { flex-direction: column; align-items: stretch; flex-wrap: nowrap; max-height: 38vh; }
+  .ctx-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ctx-row::-webkit-scrollbar { display: none; }
+  .ctx-row > * { flex: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .grp-body, .grp-in, .chev, .caret, .side { transition: none; }
+  .toast { animation: none; }
+}
+
+/* ================= help banner ================= */
+.help {
+  position: relative;
+  max-width: 900px;
+  margin: 0 auto 12px;
+  padding: 12px 40px 12px 16px;
+  font-size: 14px;
+  line-height: 1.75;
+  background: #fff;
+  border: 1px solid var(--hair);
+  border-left: 4px solid #f0b429;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+}
+.help ol { margin: 4px 0 6px; padding-left: 20px; }
+.help-x { position: absolute; top: 8px; right: 10px; width: 28px; height: 28px; font-size: 15px; color: var(--muted); background: none; border: 0; border-radius: 8px; cursor: pointer; }
+.help-x:hover { background: var(--panel-2); }
+.linkbtn { padding: 0; font: inherit; color: var(--accent); background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.seam-note { margin: 6px 0 0; font-size: 12px; text-align: center; color: var(--muted); }
+
+/* ================= dialogs ================= */
+.overlay { position: fixed; inset: 0; z-index: 100; display: flex; align-items: center; justify-content: center; padding: 12px; background: rgba(15, 23, 42, .5); }
+.modal { width: min(460px, 100%); max-height: 90vh; overflow: auto; padding: 18px 20px; background: #fff; border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .32); }
+.modal h3 { margin: 0 0 12px; font-size: 17px; font-weight: 750; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hair); }
+.muted { font-size: 13px; color: var(--muted); }
+.form-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0; }
+.form-row label { display: block; flex: 1; min-width: 110px; font-size: 13px; color: #475569; }
+.modal input[type="text"], .modal input:not([type]), .modal input[type="number"] {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px;
+  font: inherit;
+  font-size: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.modal input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rich { display: block; min-height: 2.2em; margin-top: 4px; padding: 6px 8px; font: inherit; font-size: 18px; white-space: pre-wrap; background: #fff; border: 1px solid var(--line); border-radius: 8px; outline: none; }
+.rich:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37, 99, 235, .2); }
+.rich:empty::before { content: attr(data-ph); color: #94a3b8; }
+.mathbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.check { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; }
+.tbl-prev { display: grid; gap: 3px; margin-top: 10px; }
+.tbl-prev span { height: 18px; background: #fff; border: 1px solid #94a3b8; }
+.tbl-prev span.h { background: #e2e8f0; }
+.tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.tabs button { flex: 1; padding: 8px; font: inherit; background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
+.tabs button.on { font-weight: 700; background: var(--accent-soft); border-color: #9db8f5; }
+.math-box { margin: 10px 0 4px; padding: 10px; font-size: 20px; background: var(--panel-2); border-radius: 8px; }
+.steps { padding-left: 20px; line-height: 1.8; }
+
+/* ================= A4 sheet =================
+   --pw / --ph (page width / height) come from the portrait or landscape choice,
+   set on .sheet-wrap in App.jsx. */
+.sheet-wrap { width: var(--pw, 210mm); margin: 0 auto; }
+.sheet {
+  width: var(--pw, 210mm);
+  min-height: var(--ph, 297mm);
+  /* page margins (cm) come from the toolbar, set on the sheet as --mt / --mr / --mb / --ml */
+  padding: var(--mt, 0.2cm) var(--mr, 0.2cm) var(--mb, 0.2cm) var(--ml, 0.2cm);
+  background-color: #fff;
+  position: relative; /* text boxes are placed from the sheet's top-left corner */
+  /* one thin solid line where each page ends (bottom margin), drawn like the line under the header */
+  background-image: linear-gradient(
+    to bottom,
+    transparent calc(var(--ph, 297mm) - var(--mb, 0.2cm) - 1px),
+    #000 calc(var(--ph, 297mm) - var(--mb, 0.2cm) - 1px),
+    #000 calc(var(--ph, 297mm) - var(--mb, 0.2cm)),
+    transparent calc(var(--ph, 297mm) - var(--mb, 0.2cm))
+  );
+  background-size: 100% var(--ph, 297mm);
+  background-repeat: repeat-y;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, .2);
+  color: #000;
+  /* font family, base size, line gap come from the toolbar (CSS variables set on the sheet) */
+  font-family: var(--ff, "SutonnyOMJ", "Nikosh", "Noto Sans Bengali", sans-serif) !important;
+  font-size: var(--fs, 16px);
+  line-height: var(--lh, 1.7);
+}
+
+.pm { outline: none; }
+
+/* every place you can type */
+.host { outline: none; position: relative; min-height: 1.5em; border-radius: 3px; }
+.host:hover { background: rgba(37, 99, 235, .05); }
+.host:focus { background: rgba(37, 99, 235, .08); box-shadow: 0 0 0 2px rgba(37, 99, 235, .35); }
+.host.empty::before {
+  content: attr(data-ph-show);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  color: #94a3b8;
+  font-weight: 400;
+  font-style: normal;
+  text-decoration: none;
+  text-align: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  pointer-events: none;
+}
+.host p { margin: 2px 0; }
+
+/* ---------- header ---------- */
+.hdr .c-big { display: block; text-align: center; font-size: 20px; font-weight: 700; line-height: 1.12; }
+.hdr .c-mid { display: block; text-align: center; font-size: 20px; font-weight: 700; line-height: 1.12; }
+
+/* Grid layout, same as the school's paper:
+     row 1 : বিষয় : ...   শ্রেণি : ...      (centred)
+     row 2 : সময় : ...               পূর্ণমান : ...
+   The .mleft / .mright wrappers are removed from the layout (display: contents),
+   so each label row can be placed on the grid. */
+.meta {
+  display: grid;
+  /* the outer columns share the free space equally, so the middle pair (বিষয় + শ্রেণি) is exactly centred */
+  grid-template-columns: minmax(0, 1fr) auto auto minmax(0, 1fr);
+  align-items: baseline;
+  row-gap: 4px;
+  border-bottom: 2px solid #000;
+  /* the rule runs from the left edge to the right edge of the text area */
+  padding: 2px 0 3px;
+  margin-top: 2px;
+}
+.mleft, .mright { display: contents; }
+.mrow { display: flex; align-items: baseline; gap: 4px; flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+/* the value box is one text line high (no extra height from the .host rule) */
+.mrow .val { display: inline-block; min-width: 3em; min-height: 0; line-height: 1.2; margin: 0; padding: 0; border-bottom: 1px dashed #94a3b8; }
+.mrow .val.empty::before { white-space: nowrap; }
+
+/* two columns, the same for both rows: the left fields start at the rule's left edge,
+   the right fields end at its right edge (বিষয় / সময় on the left, শ্রেণি / পূর্ণমান on the right) */
+/* বিষয় + শ্রেণি + সময় all sit in the middle of the paper; পূর্ণমান stays at the right edge */
+.mleft .mrow:nth-child(1) { grid-column: 2; grid-row: 1; justify-self: end; margin-right: 36px; }
+/* শ্রেণি starts after a clear space, with no rule between the two */
+.mleft .mrow:nth-child(2) { grid-column: 3; grid-row: 1; justify-self: start; margin-left: 0; }
+.mleft .mrow:nth-child(3) { grid-column: 1 / span 2; grid-row: 2; justify-self: start; margin-left: 10px; }
+.mright .mrow { grid-column: 4; grid-row: 2; justify-self: end; }
+.mright .mrow .val { min-width: 2.4em; }
+
+/* the English paper shows English labels; the Bangla and Math papers show Bangla labels */
+.sheet.lang-en .lb.bn { display: none; }
+.sheet:not(.lang-en) .lb.en { display: none; }
+
+/* ---------- questions ---------- */
+/* ================= questions =================
+   Whole-paper layout (from the কলাম menu):
+   - one column (default)
+   - two equal halves (--pc = 2, column-fill: balance)
+   - "প্রথম পেজ ভরে, বাকি পরের পেজে": one column; the editor pushes whole questions to the next page */
+.blocks {
+  counter-reset: qn;
+  margin-top: 6px;
+}
+/* heading full width, only the questions in two columns */
+.pm.nohead .blocks {
+  column-count: 2;
+  column-gap: 28px;
+  column-rule: 1px solid #cbd5e1;
+  column-fill: auto;
+}
+.pm {
+  column-count: var(--pc, 1);
+  column-gap: 28px;
+  column-rule: 1px solid #cbd5e1;
+  /* the page has no fixed height in this view, so the two columns are balanced (equal halves) */
+  column-fill: balance;
+}
+
+/* two columns flowing over the pages (the page boxes and their two columns are made by reflow() in editor.js).
+   Every page is a white box of its own, as high as the paper, with grey between the pages (like Word).
+   The page margins are the padding of each box; the heading keeps the top margin of the first page.
+   The left column fills first, then the right one, then the next page. */
+.sheet[data-paged] {
+  padding: 0;
+  min-height: 0;
+  background-color: #d6dce5;
+  background-image: none;
+}
+.pm[data-flow] > .hdr {
+  background: #fff;
+  padding: var(--mt, 0.2cm) var(--mr, 0.2cm) 0 var(--ml, 0.2cm);
+}
+.pm[data-flow] .blocks { margin-top: 0; }
+.pm[data-flow] .pg {
+  display: grid;
+  grid-template-columns: 1fr;
+  /* the one row is as high as the page's text area, so each column is one page high */
+  grid-template-rows: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  padding: var(--mt, 0.2cm) var(--mr, 0.2cm) var(--mb, 0.2cm) var(--ml, 0.2cm);
+  margin-bottom: 24px;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .25);
+}
+.pm[data-flow] .pg:first-child { padding-top: 0; }
+/* the page end: a grey dashed line at the bottom margin of every page box (screen only) */
+.pm[data-flow] .pg { position: relative; }
+.pm[data-flow] .pg::after {
+  content: '';
+  position: absolute;
+  left: var(--ml, 0.2cm);
+  right: var(--mr, 0.2cm);
+  bottom: var(--mb, 0.2cm);
+  border-top: 1px dashed #94a3b8;
+  pointer-events: none;
+}
+.pm[data-flow].headcols .pg:first-child { padding-top: var(--mt, 0.2cm); }
+.pm[data-flow] .pcol { position: relative; min-width: 0; }
+.pm[data-flow][data-cols="2"] .pg { grid-template-columns: 1fr 1fr; }
+.pm[data-flow][data-cols="1"] .pg { grid-template-columns: 1fr; }
+.pm[data-flow][data-cols="2"] .pcol:first-child { padding-right: 14px; border-right: 1px solid #cbd5e1; }
+.pm[data-flow][data-cols="2"] .pcol:last-child { padding-left: 14px; }
+/* the pages are boxes of their own: the paper's CSS columns (column-count) must not cut them up */
+.pm[data-flow], .pm[data-flow] .blocks, .pm.nohead[data-flow] .blocks {
+  column-count: auto;
+  column-gap: normal;
+  column-rule: none;
+  column-fill: initial;
+}
+.menu-chk { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.menu-chk input { width: 16px; height: 16px; margin: 0; }
+.menu-chk.dis { opacity: .45; cursor: not-allowed; }
+/* the rest of a question that continues in the next column or page: no number, no marks box */
+.pm[data-flow] .blk.cont { counter-increment: none; margin-top: 0; }
+
+/* underbar (নিচে দাগ): the lines stacked, the bar under the last one, lines right-aligned like a sum */
+.mi-ubar { display: inline-block; vertical-align: middle; }
+.mi-ubar .ub-base {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: .8em;
+  padding: 0 .15em .1em;
+  border-bottom: 1px solid currentColor;
+  text-align: right;
+}
+.mi-ubar .ub-row { display: block; white-space: pre; line-height: 1.35; }
+.ub-line { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ub-line input { flex: 1; min-width: 0; width: 100%; }
+
+/* a part of the paper set to several columns (--n), made from a selection.
+   Text flows from the first column into the next, like Word columns. */
+.cols {
+  column-count: var(--n, 2);
+  column-gap: 24px;
+  column-rule: 1px solid #cbd5e1;
+  column-fill: balance;
+  margin: 4px 0;
+}
+/* the lines of the two columns are counted without the paragraph gaps, so the left column takes its full share */
+.cols > p, .cols > ol, .cols > ul, .cols > div { margin-top: 0; margin-bottom: 0; }
+/* the lines may break between the columns (the paragraphs and list items are not kept whole), so the split is by line */
+.host .cols p, .host .cols li, .host .cols ol { break-inside: auto; page-break-inside: auto; orphans: 1; widows: 1; margin-top: 0; margin-bottom: 0; }
+.cols .sec { break-after: avoid; }
+/* inside a narrow column the body text can wrap anywhere */
+.cols .qbody { overflow-wrap: anywhere; }
+.cols .q { display: flow-root; }
+.cols .qbody ol { padding-left: 2em; }
+.q {
+  /* the number sits at the left and the marks box at the right, both floated at the top.
+     The text starts beside the number, runs up to the marks box, and once it is below the
+     marks box it takes the full width. flow-root keeps the floats inside the question. */
+  display: flow-root;
+  margin: var(--qgap, 8px) 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+  counter-increment: qn;
+}
+.qno { float: left; margin-right: 6px; font-weight: 700; white-space: nowrap; user-select: text; cursor: pointer; }
+/* A heading line is picked for styling by the small box inside its left edge.
+   The box sits inside the line (the line gets 22 px of side padding, so headings stay centred),
+   because the sheet margin can be as small as 0.2 cm. */
+.hdr > .line { padding-left: 22px; padding-right: 22px; }
+.blk { position: relative; }
+.hdr > .line::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin-top: -6px;
+  border: 1.5px solid #94a3b8;
+  border-radius: 3px;
+  background: #fff;
+  cursor: pointer;
+}
+.hdr > .line.picked::before { background: var(--accent); border-color: var(--accent); }
+.hdr > .line.picked { background: rgba(37, 99, 235, .06); }
+/* margin box: one row per side, label | − | value | +, so nothing wraps or gets cut */
+/* the four margin boxes: two per row on a wide panel, one per row on a narrow phone.
+   Each side is one line: label, −, value, + (the value takes the spare width, nothing wraps) */
+.margin-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px 12px; padding: 0 6px 8px; }
+.margin-cell { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto; align-items: center; gap: 6px; min-width: 0; }
+.margin-cell .tb-label { white-space: nowrap; }
+.margin-cell .small { flex: none; width: 2.2em; height: 2.2em; min-width: 0; padding: 0; justify-content: center; }
+.margin-cell .step-val { min-width: 0; text-align: center; white-space: nowrap; }
+
+/* pictures inside questions, text boxes and table cells */
+.pimg { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; cursor: pointer; border-radius: 2px; }
+.pimg.imgsel { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pimg.imgdrag { opacity: .45; }
+
+/* basic shapes and drawn arrows: stretched to the chosen size, outline stays thin */
+.shape {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 0;
+  cursor: pointer;
+  max-width: 100%;
+}
+/* the drawing itself does not catch clicks (its lines reach past the box): a click beside a shape
+   goes to the text next to it, so the pointer can be put in front of the shape */
+.shape svg { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+/* a section line sits on its own row; its thickness is the --sw variable */
+
+.shape svg * {
+  fill: none;
+  stroke: #000;
+  stroke-width: var(--sw, 1.5);
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.shape.imgsel { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* a shape at the start of a line, after its two spaces: it is kept a little shorter so it stays on that line */
+.shape.lsp, .mi.lsp { max-width: calc(100% - 1.2em); }
+/* small square at the bottom-right corner of the selected shape: drag it to resize */
+.shape.imgsel::after {
+  content: '';
+  position: absolute;
+  right: -9px;
+  bottom: -9px;
+  width: 14px;
+  height: 14px;
+  background: var(--accent);
+  border-radius: 3px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.tb-hint { font-size: 12px; color: var(--muted); align-self: center; }
+/* the sign that says whether a text box or picture is straight */
+.tb-ok { font-size: 13px; font-weight: 600; color: #15803d; align-self: center; white-space: nowrap; }
+.tb-ok.warn { color: #b45309; }
+.symhead { font-size: 12px; color: var(--muted); margin: 6px 2px 4px; }
+.shapegrid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.shapebtn { padding: 4px 0; display: flex; align-items: center; justify-content: center; }
+.shico { display: block; width: 26px; height: 26px; }
+.shico svg { display: block; width: 100%; height: 100%; }
+.shico svg * { fill: none; stroke: #111; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+/* the blue line that shows where a dragged picture will land */
+/* a question / block that starts on a new page (screen only) */
+.blk.newpage { outline: 1px dashed #f59e0b; outline-offset: 3px; }
+.blk.newpage::after { content: 'নতুন পেজ'; position: absolute; right: 0; top: -14px; font-size: 11px; color: #b45309; background: #fffbeb; padding: 0 4px; border-radius: 4px; }
+.dropmark { position: fixed; width: 2px; background: var(--accent); pointer-events: none; z-index: 60; border-radius: 1px; }
+
+/* table: cells picked with the mouse, and the resize cursor on the cell edges */
+.host table.t td.csel, .host table.t th.csel { background: rgba(37, 99, 235, .18); }
+.pm[data-grip="col"] td, .pm[data-grip="col"] th { cursor: col-resize; }
+.pm[data-grip="row"] td, .pm[data-grip="row"] th { cursor: row-resize; }
+.qno::before { content: counter(qn, bengali) "।"; }
+.sheet.lang-en .qno::before { content: counter(qn, decimal) "."; }
+.qbody { display: block; width: 100%; min-width: 0; margin: 0; }
+/* the question text starts a standard margin (0.5 cm) in from the left edge. The 1st line still starts
+   beside the number, because the number is wider than the margin. */
+.q > .qbody { padding-left: 0.5cm; }
+/* the body's top line starts at the top of the question, so the marks box sits inside the body's box */
+.q > .qbody > :first-child { margin-top: 0; }
+.qmark { margin-top: 0; position: relative; z-index: 2; /* the body box is positioned and would otherwise cover the marks box */ }
+.qmark {
+  float: right;
+  margin-left: 4px;
+  margin-right: 2px;
+  width: 5em;
+  max-width: 22%;
+  box-sizing: border-box;
+  text-align: center;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px dashed #94a3b8;
+  background: transparent;
+  color: #000; /* the paper's own text colour */
+  outline: none;
+
+  /* ---- ধাপ ১: লেখা ----
+     inherit না করে সরাসরি paper-এর ফন্ট ও সাইজ (sheet-এর CSS variable --ff, --fs) নেওয়া হয়েছে।
+     shorthand ব্যবহার হয়নি, তাই line-height নিচে আলাদা করে সেট করা যায় এবং reset হয় না। */
+  font-family: var(--ff, "SutonnyOMJ", "Nikosh", "Noto Sans Bengali", sans-serif);
+  font-size: var(--fs, 16px);
+  font-style: normal;
+  font-variant: normal;
+  font-stretch: normal;
+  letter-spacing: normal;
+  word-spacing: normal;
+  font-weight: 400; /* marks are normal weight unless the teacher makes them bold */
+  --qm-extra: .6em;  /* বাড়তি জায়গা লেখার উপরে */
+  line-height: calc(var(--lh, 1.7) * 1em + var(--qm-extra));
+
+  /* ---- ধাপ ২: input box ----
+     box লম্বা হলো, কিন্তু উপরে সরানো হলো। তাই নিচের দাগ (underline) আগের জায়গাতেই থাকে,
+     আর float একই এক লাইনের জায়গা নেয়, লেখার লেআউট বদলায় না। */
+  height: calc(var(--lh, 1.7) * 1em + var(--qm-extra) + 1px);
+  margin-top: calc(-1px - var(--qm-extra));
+}
+.qmark:focus { background: rgba(37, 99, 235, .08); border-bottom-color: var(--accent); }
+.qmark::placeholder { color: #94a3b8; font-weight: 400; }
+
+.sec { margin: 12px 0 4px; break-after: avoid; }
+.sec .host { text-align: center; font-weight: 700; text-decoration: underline; }
+.note { margin: 6px 0; }
+
+/* sub-questions */
+@counter-style bn-alpha {
+  system: alphabetic;
+  symbols: "ক" "খ" "গ" "ঘ" "ঙ" "চ" "ছ" "জ" "ঝ" "ঞ" "ট" "ঠ";
+  suffix: ". ";
+}
+@counter-style bn-alpha-paren {
+  system: alphabetic;
+  symbols: "ক" "খ" "গ" "ঘ" "ঙ" "চ" "ছ" "জ" "ঝ" "ঞ" "ট" "ঠ";
+  prefix: "(";
+  suffix: ") ";
+}
+@counter-style en-alpha { system: extends lower-alpha; suffix: ". "; }
+@counter-style en-paren { system: extends lower-alpha; prefix: "("; suffix: ") "; }
+
+.host ol { margin: 2px 0; padding-left: 2.6em; }
+.host ol li { padding-left: 2px; }
+.host ol.ol-bn { list-style: bn-alpha; }
+.host ol.ol-en { list-style: en-alpha; }
+.host ol.ol-mcq-bn { list-style: bn-alpha-paren; column-count: 2; column-gap: 28px; }
+.host ol.ol-mcq-en { list-style: en-paren; column-count: 2; column-gap: 28px; }
+
+/* tables */
+.host table.t { border-collapse: collapse; table-layout: fixed; width: 100%; margin: 6px 0; font-size: .92em; }
+.host table.t th, .host table.t td { border: 1px solid #000; padding: 3px 7px; vertical-align: middle !important; min-width: 2em; word-break: break-word; }
+.host table.t th { font-weight: 700; background: #f3f4f6; text-align: center; }
+
+
+
+/* fractions and roots */
+.mi { display: inline-block; vertical-align: middle; white-space: nowrap; margin: 0 .12em; line-height: 1.2; user-select: none; cursor: default; }
+.mi-frac .whole { margin-right: .2em; vertical-align: middle; }
+.mi-frac .fr { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; font-size: .95em; }
+.mi-frac .n { border-bottom: 1px solid currentColor; padding: 0 .25em; text-align: center; }
+.mi-frac .d { padding: 0 .25em; text-align: center; }
+.mi-frac sup.pw { font-size: .62em; line-height: 0; vertical-align: .55em; margin-left: .05em; }
+.mi-frac sub.ps { font-size: .62em; line-height: 0; vertical-align: -.35em; margin-left: .05em; }
+.mi-sqrt .rad { border-top: 1px solid currentColor; padding: 0 .2em; margin-left: .05em; }
+/* accent (mark above the text) and underbar (line under it) */
+.mi-acc { position: relative; }
+.mi-acc .acc-base { display: inline-block; padding: .5em .12em 0; min-width: .4em; text-align: center; }
+.mi-acc.ubar .acc-base { position: relative; padding: 0 .12em .3em; }
+.mi-acc.ubar .acc-base::after { content: ""; position: absolute; left: 0; right: 0; bottom: .05em; height: 1px; background: currentColor; }
+.mi-acc.ubar[data-n="2"] .acc-base::after { box-shadow: 0 3px 0 currentColor; }
+.mi-acc.ubar[data-n="3"] .acc-base::after { box-shadow: 0 3px 0 currentColor, 0 6px 0 currentColor; }
+.mi-acc .acc-mk { position: absolute; left: 0; right: 0; top: 0; text-align: center; line-height: 1; pointer-events: none; }
+.mi-acc .acc-mk[data-m="hat"]::before { content: "\02C6"; }
+.mi-acc .acc-mk[data-m="dot"]::before { content: "\02D9"; }
+.mi-acc .acc-mk[data-m="ddot"]::before { content: "\00A8"; }
+.mi-acc .acc-mk[data-m="tilde"]::before { content: "\02DC"; }
+.mi-acc .acc-mk[data-m="arrow"]::before { content: "\2192"; font-size: .8em; }
+.mi-acc .acc-mk[data-m="bar"] { top: .3em; left: .08em; right: .08em; height: 1px; background: currentColor; }
+.mi-acc[data-n="2"] .acc-mk[data-m="bar"] { box-shadow: 0 -3px 0 currentColor; }
+.mi-acc[data-n="3"] .acc-mk[data-m="bar"] { box-shadow: 0 -3px 0 currentColor, 0 -6px 0 currentColor; }
+/* a fraction is one object: no hover box or pointer. A click selects it and opens its settings */
+.mi:hover { background: none; cursor: default; }
+/* shape / arrow buttons in the menu: no hover box or pointer */
+.shapebtn, .shapebtn:hover { background: none; cursor: default; }
+.mi.mathsel { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+.math-prev .mi { cursor: default; }
+
+/* ================= text boxes =================
+   A text box can be put anywhere on the paper: press its frame (or its grip on top) and drag.
+   Border: box (default), line (underline only), or none.
+   The handles are sized on the SCREEN, not on the paper: --zi (1 / zoom, set on the paper) cancels the
+   paper zoom, and the sizes follow the screen width, so a phone and a big monitor both get handles
+   that fit the box and do not grow when the paper is enlarged. */
+:root {
+  --hk: clamp(8px, 1.2vw, 11px);     /* corner knob */
+  --hgw: clamp(18px, 3.4vw, 26px);   /* top grip: width */
+  --hgh: 4px;                        /* top grip: height */
+  --hsw: 5px;                        /* right-edge handle: width */
+  --hsh: clamp(14px, 3vw, 20px);     /* right-edge handle: height (never more than 70% of the box) */
+  --hit: 3px;                        /* extra area around a handle that still grabs it */
+}
+@media (pointer: coarse) {
+  :root {
+    --hk: clamp(11px, 3.4vw, 15px);
+    --hgw: clamp(26px, 8vw, 36px);
+    --hgh: 7px;
+    --hsw: 7px;
+    --hsh: clamp(20px, 6vw, 28px);
+    --hit: 9px;                      /* a finger needs a bigger area than a mouse */
+  }
+}
+.blk.tbox {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 4px 6px;
+  background: none;
+  border: 1px solid #000;
+}
+.blk.tbox[data-style="line"] { border: 0; border-bottom: 1px solid #000; padding: 2px 4px; }
+.blk.tbox[data-style="none"] { border: 0; padding: 2px 4px; }
+.blk.tbox > .host { min-height: 1.5em; }
+/* a text box is moved by pressing its frame (the padding around the writing area); the writing area is above it */
+.blk.tbox:not(.pbox)::before { content: ""; position: absolute; inset: 0; pointer-events: auto; cursor: move; touch-action: none; z-index: 0; }
+.blk.tbox:not(.pbox) > .host { position: relative; z-index: 1; }
+
+/* a picture box: the picture alone, with no border; it is as wide as the picture */
+.blk.tbox.pbox { border: 0; padding: 0; background: none; width: max-content; }
+.blk.tbox.pbox:hover { outline: 1px dashed #94a3b8; outline-offset: 2px; }
+.pbox .pbody { line-height: 0; cursor: move; touch-action: none; }
+.pbox .pbody .pimg { display: block; cursor: move; max-width: none; }
+/* a floating picture box is see-through except its picture and handles, so the text under it can be tapped */
+.blk.tbox.pbox { pointer-events: none; }
+.blk.tbox.pbox > .pbody, .blk.tbox.pbox > .tbgrip, .blk.tbox.pbox > .tbrot, .blk.tbox.pbox > .tbsz { pointer-events: auto; }
+
+/* ----- handles (all sizes: screen pixels, see above) ----- */
+.tbgrip, .tbrot, .tbsz { position: absolute; z-index: 3; touch-action: none; }
+/* the grip: a bar on the top edge that moves the box */
+.tbgrip {
+  top: calc(var(--hgh) * -0.5 * var(--zi, 1));
+  left: 50%;
+  width: min(calc(var(--hgw) * var(--zi, 1)), 60%);
+  height: calc(var(--hgh) * var(--zi, 1));
+  transform: translateX(-50%);
+  border-radius: calc(var(--hgh) * var(--zi, 1));
+  background: #94a3b8;
+  cursor: move;
+}
+.tbgrip::before { content: ""; position: absolute; inset: calc(var(--hit) * -1 * var(--zi, 1)); }
+.tbgrip:hover { background: var(--accent); }
+
+/* rotate knobs: one on each corner. Drag any corner to turn the box freely (the box turns round its middle). */
+.tbrot {
+  width: calc(var(--hk) * var(--zi, 1));
+  height: calc(var(--hk) * var(--zi, 1));
+  border-radius: 50%;
+  background: #fff;
+  border: calc(var(--hk) * 0.12 * var(--zi, 1)) solid #94a3b8;
+  box-sizing: border-box;
+  cursor: grab;
+  opacity: .55;
+}
+.tbrot::before { content: ""; position: absolute; inset: calc(var(--hit) * -1 * var(--zi, 1)); }
+.tbrot.tl { top: calc(var(--hk) * -0.5 * var(--zi, 1)); left: calc(var(--hk) * -0.5 * var(--zi, 1)); }
+.tbrot.tr { top: calc(var(--hk) * -0.5 * var(--zi, 1)); right: calc(var(--hk) * -0.5 * var(--zi, 1)); }
+.tbrot.bl { bottom: calc(var(--hk) * -0.5 * var(--zi, 1)); left: calc(var(--hk) * -0.5 * var(--zi, 1)); }
+.tbrot.br { bottom: calc(var(--hk) * -0.5 * var(--zi, 1)); right: calc(var(--hk) * -0.5 * var(--zi, 1)); }
+.tbrot:hover, .blk.tbox:hover > .tbrot { opacity: 1; }
+.tbrot:hover { border-color: var(--accent); }
+
+/* right-edge handle: drag it to make a text box or picture box wider or narrower */
+.tbsz {
+  top: 50%;
+  right: calc(var(--hsw) * -0.5 * var(--zi, 1));
+  width: calc(var(--hsw) * var(--zi, 1));
+  height: min(calc(var(--hsh) * var(--zi, 1)), 70%);
+  transform: translateY(-50%);
+  border-radius: calc(var(--hsw) * var(--zi, 1));
+  background: #94a3b8;
+  cursor: ew-resize;
+  opacity: .55;
+}
+/* the grab area stays mostly outside the box, so a click in the text never widens it */
+.tbsz::before { content: ""; position: absolute; top: calc(var(--hit) * -1 * var(--zi, 1)); bottom: calc(var(--hit) * -1 * var(--zi, 1)); left: calc(var(--hit) * -0.6 * var(--zi, 1)); right: calc(var(--hit) * -1 * var(--zi, 1)); }
+.tbsz:hover, .blk.tbox:hover > .tbsz { opacity: 1; }
+.tbsz:hover { background: var(--accent); }
+
+/* picture box: its handles sit OUTSIDE the picture (a press on the picture itself moves the box) */
+.blk.tbox.pbox > .tbgrip { top: calc(var(--hgh) * -3 * var(--zi, 1)); }
+.blk.tbox.pbox > .tbrot.tl { top: calc(var(--hk) * -1.5 * var(--zi, 1)); left: calc(var(--hk) * -1.5 * var(--zi, 1)); }
+.blk.tbox.pbox > .tbrot.tr { top: calc(var(--hk) * -1.5 * var(--zi, 1)); right: calc(var(--hk) * -1.5 * var(--zi, 1)); }
+.blk.tbox.pbox > .tbrot.bl { bottom: calc(var(--hk) * -1.5 * var(--zi, 1)); left: calc(var(--hk) * -1.5 * var(--zi, 1)); }
+.blk.tbox.pbox > .tbrot.br { bottom: calc(var(--hk) * -1.5 * var(--zi, 1)); right: calc(var(--hk) * -1.5 * var(--zi, 1)); }
+.blk.tbox.pbox > .tbsz { right: calc(var(--hsw) * -2.5 * var(--zi, 1)); }
+
+/* touch: the handles are a little more solid, as a finger cannot see a faint knob */
+@media (pointer: coarse) {
+  .tbgrip, .tbrot, .tbsz { opacity: 1; }
+}
+
+/* ================= page breaks =================
+   The school heading, every question / heading / note, every sub-question line and table row
+   stay whole on one page. A page break can only fall between two of these pieces. */
+.hdr,
+.blk,
+.host p,
+.host ol li,
+.host table.t tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.hdr .meta { break-inside: avoid; page-break-inside: avoid; }
+
+/* ================= print =================
+   The page size (A4 portrait / landscape) is set in App.jsx with an @page rule. */
+@page { margin: 10mm; }
+@media print {
+  html, body { background: #fff !important; }
+  .topbar, .side, .scrim, .dock-wrap, .toast, .help, .seam-note, .overlay { display: none !important; }
+  .app { padding: 0 !important; overflow: visible; }
+  .sheet-wrap { width: auto; zoom: 1 !important; }
+  .sheet {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    box-shadow: none;
+    background: none;
+  }
+  .host { background: none !important; box-shadow: none !important; }
+  .host.empty::before { display: none; }
+  .mrow .val, .qmark { border-bottom: 0 !important; }
+  .qmark:placeholder-shown { visibility: hidden; }
+  .mi:hover { background: none; }
+  .cols { column-rule: 1px solid #94a3b8; }
+  .tbgrip, .tbrot, .tbsz, .pinch-badge { display: none; }
+  .hdr > .line::before { display: none; }
+  .dropmark { display: none !important; }
+  .blk.newpage { outline: none; }
+  .blk.newpage::after { display: none; }
+  .pimg.imgsel { outline: none; }
+  .shape.imgsel { outline: none; }
+  .mi.mathsel { outline: none; }
+  .shape.imgsel::after { display: none; }
+  .host table.t td.csel, .host table.t th.csel { background: none !important; }
+  .sheet[data-paged] { background: none; }
+  /* every page box is one printed page: the printer's margins are the page's margins (no padding, no fixed height),
+     and each page box starts on a new sheet */
+  .pm[data-flow] .pg { margin: 0; box-shadow: none; height: auto !important; min-height: 0; padding: 0 !important; break-before: page; }
+  .pm[data-flow] .pg:first-child { break-before: auto; }
+  .pm[data-flow] .pcol { min-height: 0; }
+  /* the printer's page margin is the only margin in print: the heading must not add its own (the copies too) */
+  .pm[data-flow] > .hdr { padding: 0 !important; }
+  .pm[data-flow] .pg::after { display: none; }
+}
+
+/* a floating text box or picture box does not catch the mouse / finger on the text under its frame:
+   only its handles, its writing area and its picture respond. The text under it stays selectable. */
+.blk.tbox { pointer-events: none; }
+.blk.tbox > .host,
+.blk.tbox > .tbgrip,
+.blk.tbox > .tbrot,
+.blk.tbox > .tbsz,
+.blk.tbox > .pbody { pointer-events: auto; }
+/* ================= phone: a more compact collapsible tool panel ================= */
+@media (max-width: 1179px) {
+  .side { width: min(80vw, 290px); }
+  .side-head { padding: 4px 6px 4px 12px; font-size: 14px; }
+  .grp-h { min-height: 42px; padding: 0 12px; font-size: 13.5px; gap: 8px; }
+  .grp-ic { width: 26px; height: 26px; border-radius: 8px; }
+  .grp-pad { gap: 8px; padding: 2px 10px 12px; }
+  .tiles { gap: 6px; }
+  .tile, .tiles .menu > .tbtn { min-height: 52px; padding: 6px 3px; font-size: 11.5px; }
+  .tile.big { min-height: 38px; font-size: 13.5px; }
+  .side .menu-pop { margin-top: 6px; }
+}
+
+
+/* ================= Multi-copy print layout ================= */
+.print-multi { display: none; }
+.print-copy-intro { margin: 0 0 10px; font-weight: 700; }
+.print-copy-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 16px; }
+.print-copy-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 72px; padding: 10px 6px; border: 1px solid var(--line, #cbd5e1); border-radius: 10px; background: #fff; color: #0f172a; cursor: pointer; font: inherit; }
+.print-copy-option b { font-size: 15px; }
+.print-copy-option span { color: #64748b; font-size: 11px; text-align: center; }
+.print-copy-option.on { border-color: var(--accent, #2563eb); background: var(--accent-soft, #eff6ff); box-shadow: 0 0 0 1px var(--accent, #2563eb) inset; }
+
+@media (max-width: 480px) {
+  .print-copy-options { gap: 5px; }
+  .print-copy-option { min-height: 66px; padding: 8px 3px; }
+  .print-copy-option span { font-size: 10px; }
+}
+
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; }
+  .print-multi[data-copies] { display: grid !important; width: 100%; height: 100vh; margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; gap: 2px; }
+  .app:has(.print-multi[data-copies]) .sheet-wrap,
+  .app:has(.print-multi[data-copies]) .seam-note { display: none !important; }
+  .print-multi[data-copies="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 1fr; }
+  .print-multi[data-copies="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  /* Keep the paper's outer edge clean: draw cut guides only between copies. */
+  .print-copy-cell { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; box-sizing: border-box; border: 0; break-inside: avoid; page-break-inside: avoid; }
+  .print-multi[data-copies="2"] .print-copy-cell:first-child { border-right: 0.25mm dashed #64748b; }
+  .print-multi[data-copies="4"] .print-copy-cell:nth-child(1) { border-right: 0.25mm dashed #64748b; border-bottom: 0.25mm dashed #64748b; }
+  .print-multi[data-copies="4"] .print-copy-cell:nth-child(2) { border-bottom: 0.25mm dashed #64748b; }
+  .print-multi[data-copies="4"] .print-copy-cell:nth-child(3) { border-right: 0.25mm dashed #64748b; }
+  .print-copy-sheet { position: absolute !important; top: 0 !important; left: 0 !important; max-width: none !important; margin: 0 !important; padding: var(--mt, 0.2cm) var(--mr, 0.2cm) var(--mb, 0.2cm) var(--ml, 0.2cm) !important; box-sizing: border-box !important; transform-origin: top left !important; box-shadow: none !important; background-color: #fff !important; }
+  .print-copy-sheet[data-copy-layout="2"] { width: 210mm !important; height: 297mm !important; min-height: 297mm !important; transform: translate(var(--cx, 0mm), var(--cy, 0mm)) scale(var(--cs, 0.70710678)) !important; }
+  .print-copy-sheet[data-copy-layout="4"] { width: 297mm !important; height: 210mm !important; min-height: 210mm !important; transform: translate(var(--cx, 0mm), var(--cy, 0mm)) scale(var(--cs, 0.5)) !important; }
+  .print-copy-sheet .pm[data-flow] .pg { break-before: auto !important; page-break-before: auto !important; }
+  .print-copy-sheet .host { background: transparent !important; box-shadow: none !important; }
+  /* the heading rule is scaled down with its copy; this keeps it at a fixed thickness (0.6 mm) so it prints on every copy */
+  .print-copy-sheet .meta { border-bottom-width: calc(0.6mm / var(--cs, 1)); }
+  .print-copy-sheet [contenteditable="false"] { outline: none !important; }
+}
+
+/* the size control of the copies in the print dialog */
+.copy-size { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 14px; }
+.copy-size-lbl { font-weight: 600; }
