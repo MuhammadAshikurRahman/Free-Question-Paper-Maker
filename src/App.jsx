@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { exportPdf } from './pdfExport';
+import { exportPdf, estimateCopyPercent } from './pdfExport';
 import { Core, toBn, toAscii, SHAPES, plainMath } from './editor.js';
 import { blankDoc, sampleDoc } from './templates.js';
 import { Btn, Menu, Modal, MathPreview, Group } from './ui.jsx';
@@ -93,6 +93,7 @@ export default function App() {
   const [printCopies, setPrintCopies] = useState(1);
   const [printStack, setPrintStack] = useState(false); // 2 copies: false = side by side, true = one above the other
   const [busy, setBusy] = useState(false); // the PDF is being made
+  const [preview, setPreview] = useState(null); // the made PDF, shown before it is downloaded: { url }
 
   const [lang, setLang] = useState(() => LS.get('qgen-lang') || 'bn');
   const [st, setSt] = useState({});
@@ -352,6 +353,17 @@ export default function App() {
   // The PDF is drawn inside the app at a fixed A4 size (pdfExport.js), so it is the same on a phone and on a computer.
   const layoutRef = useRef(null);
   layoutRef.current = { orient, margins };
+  // the PDF's file name, from the paper's header: the short subject and class, e.g. "বাংলা-৬ষ্ঠ.pdf"
+  const pdfFileName = () => {
+    const field = (label) => {
+      const row = Array.from(sheetRef.current?.querySelectorAll('.mrow') || []).find((r) => r.querySelector('.lb.en')?.textContent.trim().startsWith(label));
+      return row?.querySelector('.val')?.textContent.trim() || '';
+    };
+    const subject = field('Subject').split(/\s+/)[0] || '';
+    const cls = field('Class').replace(/শ্রেণি|Class|class/gi, '').replace(/\s+/g, '');
+    const base = [subject, cls].filter(Boolean).join('-').replace(/[\\/:*?"<>|]/g, '') || 'question-paper';
+    return `${base}.pdf`;
+  };
   const doPrint = useCallback(async (copies = 1, stack = false) => {
     const stacked = copies === 2 && stack;
     setPrintCopies(copies);
@@ -362,14 +374,18 @@ export default function App() {
       await new Promise((r) => setTimeout(r, 150)); // the dialog closes and the editor settles first
       core() && core().flush();
       const { orient: o, margins: m } = layoutRef.current;
-      await exportPdf({
+      const pdf = await exportPdf({
         sheet: sheetRef.current,
         host: printMultiRef.current,
         landscape: o === 'landscape',
         margins: m,
         copies,
         stacked,
-        fileName: 'question-paper.pdf',
+      });
+      const url = URL.createObjectURL(pdf.output('blob'));
+      setPreview((old) => {
+        if (old) URL.revokeObjectURL(old.url);
+        return { url, name: pdfFileName() };
       });
     } catch (e) {
       console.error(e);
@@ -378,6 +394,33 @@ export default function App() {
       setBusy(false);
     }
   }, []);
+
+  // how big each copy will print (for the warning in the print dialog)
+  const estimateCopies = useCallback(
+    (copies, stack) =>
+      estimateCopyPercent({
+        sheet: sheetRef.current,
+        host: printMultiRef.current,
+        copies,
+        stacked: copies === 2 && stack,
+        margins: layoutRef.current.margins,
+      }),
+    [],
+  );
+
+  const closePreview = () => setPreview((old) => {
+    if (old) URL.revokeObjectURL(old.url);
+    return null;
+  });
+  const downloadPreview = () => {
+    if (!preview) return;
+    const a = document.createElement('a');
+    a.href = preview.url;
+    a.download = preview.name || 'question-paper.pdf';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  };
 
   const askPrint = () => setDlg({ type: 'print' });
 
@@ -1157,7 +1200,22 @@ export default function App() {
           }}
         />
       )}
-      {dlg && dlg.type === 'print' && <PrintDialog onClose={() => setDlg(null)} onPrint={doPrint} />}
+      {dlg && dlg.type === 'print' && <PrintDialog onClose={() => setDlg(null)} onPrint={doPrint} onEstimate={estimateCopies} />}
+      {preview && (
+        <Modal
+          title="PDF প্রিভিউ"
+          onClose={closePreview}
+          actions={
+            <>
+              <button className="tbtn" onClick={closePreview}>বন্ধ</button>
+              <button className="tbtn primary" onClick={downloadPreview}>PDF ডাউনলোড</button>
+            </>
+          }
+        >
+          <iframe className="pdf-preview" src={preview.url} title="PDF প্রিভিউ" />
+          <p className="pdf-preview-hint">প্রিভিউ না দেখা গেলে "PDF ডাউনলোড" চাপুন, তারপর ফাইলটি খুলুন।</p>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1445,9 +1503,38 @@ function MathDialog({ init, editing, onClose, onApply }) {
   );
 }
 
-function PrintDialog({ onClose, onPrint }) {
+// the warning under the copy choice: how big each copy will print, and what that means for the text
+function CopySizeNote({ pct, normal }) {
+  let verdict;
+  if (pct === null) verdict = <span>কপির মাপ হিসাব হচ্ছে…</span>;
+  else if (pct >= normal * 0.9) verdict = <span>লেখা স্বাভাবিক আকারে থাকবে ও সহজে পড়া যাবে।</span>;
+  else if (pct >= normal * 0.7) verdict = <span>লেখা একটু ছোট হবে। লেখা কিছু কম হলে আরও ভালো দেখাবে।</span>;
+  else verdict = <span className="warn">⚠ লেখা অনেক বেশি, তাই প্রতি কপি খুব ছোট হবে এবং পড়তে কষ্ট হবে। ২ কপি বা ১ কপি নিন, অথবা লেখা কিছুটা কমান।</span>;
+  return (
+    <div className="copy-note" role="status">
+      {pct !== null && <b>প্রতি কপি আনুমানিক {pct}% আকারে বসবে।</b>}
+      {verdict}
+      <small>লেখা কম থাকলে কপি স্বাভাবিক আকারে বসে। লেখা বেশি হলে কপি ছোট হয়ে যায়, অর্থাৎ ফন্ট ছোট হয়ে জুম আউটের মতো দেখায়।</small>
+    </div>
+  );
+}
+
+function PrintDialog({ onClose, onPrint, onEstimate }) {
   const [copies, setCopies] = useState(1);
   const [stack, setStack] = useState(false); // 2 copies: side by side or one above the other
+  const [pct, setPct] = useState(null); // how big each copy will print, in percent of its real size
+  useEffect(() => {
+    let alive = true;
+    setPct(null);
+    if (copies > 1) {
+      onEstimate(copies, stack)
+        .then((p) => { if (alive) setPct(p); })
+        .catch(() => { if (alive) setPct(null); });
+    }
+    return () => { alive = false; };
+  }, [copies, stack, onEstimate]);
+  // the size a copy can reach when its text is short: 4 copies is about half a page, 2 copies about 70%
+  const normal = copies === 4 ? 50 : 70;
   return (
     <Modal
       title="PDF / প্রিন্ট সেটিংস"
@@ -1465,6 +1552,7 @@ function PrintDialog({ onClose, onPrint }) {
       }
     >
       <p className="print-copy-intro">একটি A4 পৃষ্ঠায় কতটি একই প্রশ্নপত্র রাখতে চান?</p>
+      {copies > 1 && <div className="eco-badge"><span aria-hidden="true">🌿</span> পৃষ্ঠা সাশ্রয়ী মোড</div>}
       <div className="print-copy-options" role="radiogroup" aria-label="প্রতি পাতায় কপি">
         {[{ n: 1, title: '১ কপি', desc: 'সাধারণ প্রিন্ট' }, { n: 2, title: '২ কপি', desc: 'এক পাতায় দুটি' }, { n: 4, title: '৪ কপি', desc: 'ল্যান্ডস্কেপ, ২ × ২' }].map((item) => (
           <button key={item.n} type="button" className={`print-copy-option ${copies === item.n ? 'on' : ''}`} onClick={() => setCopies(item.n)} aria-pressed={copies === item.n}>
@@ -1484,10 +1572,11 @@ function PrintDialog({ onClose, onPrint }) {
           </div>
         </>
       )}
+      {copies > 1 && <CopySizeNote pct={pct} normal={normal} />}
       <ol className="steps">
         <li>প্রতিটি কপিতে স্কুলের নাম, পরীক্ষার তথ্য ও প্রশ্নসহ সম্পূর্ণ একই লেখা থাকবে।</li>
         <li>পাশাপাশি ও ৪ কপিতে পেজ A4 Landscape, উপর-নিচে বাছলে A4 Portrait। ফোন ও কম্পিউটারে এই বিন্যাস একই থাকে।</li>
-        <li>PDF ফাইল সরাসরি ডাউনলোড হবে। প্রিন্ট করতে ফাইলটি খুলে প্রিন্ট দিন।</li>
+        <li>PDF বানানোর পর প্রিভিউতে দেখে নিয়ে ডাউনলোড করুন। প্রিন্ট করতে ডাউনলোড করা ফাইলটি খুলে প্রিন্ট দিন।</li>
       </ol>
     </Modal>
   );

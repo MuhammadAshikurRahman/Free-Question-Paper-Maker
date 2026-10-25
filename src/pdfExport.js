@@ -223,8 +223,23 @@ async function drawSingle(pdf, sheet, host, { paper, pageW, pageH, m }) {
 //   2 copies side by side: landscape A4, two upright copies
 //   2 copies one above the other: portrait A4, copies laid out wide and short
 //   4 copies: landscape A4, 2 x 2 grid
-// All copies are the same, so the paper is drawn once and placed in each cell. Each copy sits in the middle of its cell.
-async function drawCopies(pdf, sheet, host, { paper, copies, stacked, m }) {
+function copiesPaper(copies, stacked) {
+  return copies === 2 && stacked ? 'portrait' : 'landscape';
+}
+
+// the margins (cm) in pixels
+function marginsPx(margins) {
+  return {
+    t: margins.t * PX_PER_CM,
+    r: margins.r * PX_PER_CM,
+    b: margins.b * PX_PER_CM,
+    l: margins.l * PX_PER_CM,
+  };
+}
+
+// Lays one copy out in its cell and measures it. Returns s: the share of the copy's real A4 size that fits its cell
+// (1 = the real size, 0.5 = half size). The copy stays in the host until the caller clears the host.
+async function layoutCopies(sheet, host, { paper, copies, stacked, m }) {
   const P = PAPER_MM[paper];
   const cw = stacked ? P.w : P.w / 2; // width of one cell
   const cellHeight = copies === 4 || stacked ? P.h / 2 : P.h; // height of one cell
@@ -263,6 +278,11 @@ async function drawCopies(pdf, sheet, host, { paper, copies, stacked, m }) {
   const fit = Math.min(cw / wMm, cellHeight / hMm);
   // each copy fills its cell as far as the cell allows (the paper's size and margins decide it), never above the real A4 size
   const s = Math.min(1, fit);
+  return { stage, cells, cw, cellHeight, P, w, H, wMm, hMm, s };
+}
+
+async function drawCopies(pdf, sheet, host, opts) {
+  const { stage, cells, cw, cellHeight, P, w, H, wMm, hMm, s } = await layoutCopies(sheet, host, opts);
 
   const canvas = await capture(stage, 0, H, w, H);
   const img = canvas.toDataURL('image/jpeg', JPEG_QUALITY);
@@ -274,34 +294,18 @@ async function drawCopies(pdf, sheet, host, { paper, copies, stacked, m }) {
   pdf.setDrawColor(0);
   pdf.setLineWidth(0.25);
   pdf.setLineDashPattern([1.5, 1.5], 0);
-  if (copies === 4) {
+  if (opts.copies === 4) {
     pdf.line(cw, 0, cw, P.h);
     pdf.line(0, cellHeight, P.w, cellHeight);
-  } else if (stacked) {
+  } else if (opts.stacked) {
     pdf.line(0, cellHeight, P.w, cellHeight);
   } else {
     pdf.line(cw, 0, cw, P.h);
   }
 }
 
-// Makes the PDF and downloads it.
-//   sheet    the .sheet element of the paper (sheetRef)
-//   host     an empty element in the app that is used for drawing (printMultiRef)
-//   landscape, margins (cm, { t, r, b, l }) the paper's own settings
-//   copies   1, 2 or 4; stacked = 2 copies one above the other
-export async function exportPdf({ sheet, host, landscape, margins, copies, stacked, fileName }) {
-  if (!sheet || !host) throw new Error('paper not found');
-  const paper = copies > 1 ? (copies === 2 && stacked ? 'portrait' : 'landscape') : landscape ? 'landscape' : 'portrait';
-  const P = PAPER_MM[paper];
-  const pageW = Math.round(P.w * PX_PER_MM); // 794 or 1123 px
-  const pageH = Math.round(P.h * PX_PER_MM); // 1123 or 794 px
-  const m = {
-    t: margins.t * PX_PER_CM,
-    r: margins.r * PX_PER_CM,
-    b: margins.b * PX_PER_CM,
-    l: margins.l * PX_PER_CM,
-  };
-
+// Runs fn with the host made ready for drawing, then clears the host and puts its style back.
+async function withDrawingHost(host, fn) {
   const savedHost = host.getAttribute('style');
   const style = addPrintCss();
   Object.assign(host.style, {
@@ -317,14 +321,42 @@ export async function exportPdf({ sheet, host, landscape, margins, copies, stack
   host.replaceChildren();
   try {
     if (document.fonts) await document.fonts.ready; // the Bangla fonts must be loaded before drawing
-    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: paper });
-    if (copies > 1) await drawCopies(pdf, sheet, host, { paper, copies, stacked, m });
-    else await drawSingle(pdf, sheet, host, { paper, pageW, pageH, m });
-    pdf.save(fileName);
+    return await fn();
   } finally {
     host.replaceChildren();
     if (savedHost === null) host.removeAttribute('style');
     else host.setAttribute('style', savedHost);
     style.remove();
   }
+}
+
+// Makes the PDF and returns it (the caller shows or saves it).
+//   sheet    the .sheet element of the paper (sheetRef)
+//   host     an empty element in the app that is used for drawing (printMultiRef)
+//   landscape, margins (cm, { t, r, b, l }) the paper's own settings
+//   copies   1, 2 or 4; stacked = 2 copies one above the other
+export async function exportPdf({ sheet, host, landscape, margins, copies, stacked }) {
+  if (!sheet || !host) throw new Error('paper not found');
+  const paper = copies > 1 ? copiesPaper(copies, stacked) : landscape ? 'landscape' : 'portrait';
+  const P = PAPER_MM[paper];
+  const pageW = Math.round(P.w * PX_PER_MM); // 794 or 1123 px
+  const pageH = Math.round(P.h * PX_PER_MM); // 1123 or 794 px
+  const m = marginsPx(margins);
+  return withDrawingHost(host, async () => {
+    const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: paper });
+    if (copies > 1) await drawCopies(pdf, sheet, host, { paper, copies, stacked: !!stacked, m });
+    else await drawSingle(pdf, sheet, host, { paper, pageW, pageH, m });
+    return pdf;
+  });
+}
+
+// How big each copy will print, as a share of its real size (100 = the same size as on the paper).
+// Returns null for one copy. Nothing is drawn or saved.
+export async function estimateCopyPercent({ sheet, host, copies, stacked, margins }) {
+  if (!sheet || !host || !(copies > 1)) return null;
+  const paper = copiesPaper(copies, stacked);
+  return withDrawingHost(host, async () => {
+    const { s } = await layoutCopies(sheet, host, { paper, copies, stacked: !!stacked, m: marginsPx(margins) });
+    return Math.round(s * 100);
+  });
 }
