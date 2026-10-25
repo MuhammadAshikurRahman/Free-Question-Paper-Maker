@@ -93,6 +93,36 @@ export default function App() {
   const [printCopies, setPrintCopies] = useState(1);
   const [printStack, setPrintStack] = useState(false); // 2 copies: false = side by side, true = one above the other
   const [busy, setBusy] = useState(false); // the PDF is being made
+
+  // The phone's keyboard covers the bottom of the page. --kb is the keyboard's height, --vvh the visible height:
+  // the floating bar (dock) rises above the keyboard and comes back down when the keyboard goes away (CSS animates it).
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+    const root = document.documentElement;
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const kb = Math.round(window.innerHeight - vv.height - vv.offsetTop);
+        // a small difference is only the browser's address bar, not a keyboard
+        root.style.setProperty('--kb', `${kb > 100 ? kb : 0}px`);
+        root.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+      });
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    window.addEventListener('orientationchange', update);
+    update();
+    return () => {
+      cancelAnimationFrame(raf);
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+      window.removeEventListener('orientationchange', update);
+      root.style.removeProperty('--kb');
+      root.style.removeProperty('--vvh');
+    };
+  }, []);
   const [preview, setPreview] = useState(null); // the made PDF, shown before it is downloaded: { url }
 
   const [lang, setLang] = useState(() => LS.get('qgen-lang') || 'bn');
@@ -1573,6 +1603,13 @@ function PrintDialog({ onClose, onPrint, onEstimate }) {
         </>
       )}
       {copies > 1 && <CopySizeNote pct={pct} normal={normal} />}
+      {copies === 1 && (
+        <div className="copy-note" role="status">
+          <b>১ কপি: আসল A4 মাপে (১০০%) বসবে।</b>
+          <span>লেখা ও মার্জিন ঠিক যেমন পেপারে দেখছেন, PDF-এও তেমনই থাকবে। লেখা পাতার চেয়ে বেশি হলে পরের পাতায় যাবে।</span>
+          <small>পরামর্শ: একসাথে অনেক জনকে দিতে হলে ২ বা ৪ কপি বেছে পৃষ্ঠা বাঁচাতে পারেন। লেখা বাড়লে বা কমলে প্রতি কপির মাপ নিজে থেকেই নতুন করে হিসাব হয়।</small>
+        </div>
+      )}
       <ol className="steps">
         <li>প্রতিটি কপিতে স্কুলের নাম, পরীক্ষার তথ্য ও প্রশ্নসহ সম্পূর্ণ একই লেখা থাকবে।</li>
         <li>পাশাপাশি ও ৪ কপিতে পেজ A4 Landscape, উপর-নিচে বাছলে A4 Portrait। ফোন ও কম্পিউটারে এই বিন্যাস একই থাকে।</li>

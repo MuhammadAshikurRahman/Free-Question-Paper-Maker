@@ -305,7 +305,16 @@ async function drawCopies(pdf, sheet, host, opts) {
 }
 
 // Runs fn with the host made ready for drawing, then clears the host and puts its style back.
-async function withDrawingHost(host, fn) {
+// One drawing at a time: the size estimate in the print dialog and the PDF itself share the same host, so a second
+// job waits until the first has cleared the host.
+let drawingQueue = Promise.resolve();
+function withDrawingHost(host, fn) {
+  const run = drawingQueue.then(() => drawOnHost(host, fn));
+  drawingQueue = run.catch(() => {});
+  return run;
+}
+
+async function drawOnHost(host, fn) {
   const savedHost = host.getAttribute('style');
   const style = addPrintCss();
   Object.assign(host.style, {
