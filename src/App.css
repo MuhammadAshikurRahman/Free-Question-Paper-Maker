@@ -509,6 +509,7 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   /* the rule runs from the left edge to the right edge of the text area */
   padding: 2px 0 3px;
   margin-top: 2px;
+  margin-bottom: 6px;
 }
 .mleft, .mright { display: contents; }
 .mrow { display: flex; align-items: baseline; gap: 4px; flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
@@ -654,8 +655,11 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   break-inside: avoid;
   page-break-inside: avoid;
   counter-increment: qn;
+  /* room above the answer line, where the marks are written. The question text and the number start below it,
+     so the answer line sits exactly at the bottom of the question's first line. */
+  --qm-extra: .6em;
 }
-.qno { float: left; margin-right: 6px; font-weight: 700; white-space: nowrap; user-select: text; cursor: pointer; }
+.qno { float: left; margin-right: 6px; margin-top: var(--qm-extra); font-weight: 700; white-space: nowrap; user-select: text; cursor: pointer; }
 /* A heading line is picked for styling by the small box inside its left edge.
    The box sits inside the line (the line gets 22 px of side padding, so headings stay centred),
    because the sheet margin can be as small as 0.2 cm. */
@@ -753,10 +757,10 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
 .qbody { display: block; width: 100%; min-width: 0; margin: 0; }
 /* the question text starts a standard margin (0.5 cm) in from the left edge. The 1st line still starts
    beside the number, because the number is wider than the margin. */
-.q > .qbody { padding-left: 0.5cm; }
+.q > .qbody { padding-left: 0.5cm; padding-top: var(--qm-extra); }
 /* the body's top line starts at the top of the question, so the marks box sits inside the body's box */
 .q > .qbody > :first-child { margin-top: 0; }
-.qmark { margin-top: 0; position: relative; z-index: 2; /* the body box is positioned and would otherwise cover the marks box */ }
+.qmark { margin-top: var(--qm-extra); position: relative; z-index: 2; /* the body box is positioned and would otherwise cover the marks box */ }
 .qmark {
   float: right;
   margin-left: 4px;
@@ -764,8 +768,7 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   width: 5em;
   max-width: 22%;
   box-sizing: border-box;
-  text-align: center;
-  padding: 0 2px;
+  text-align: right;
   border: 0;
   border-bottom: 1px dashed #94a3b8;
   background: transparent;
@@ -783,14 +786,13 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   letter-spacing: normal;
   word-spacing: normal;
   font-weight: 400; /* marks are normal weight unless the teacher makes them bold */
-  --qm-extra: .6em;  /* বাড়তি জায়গা লেখার উপরে */
-  line-height: calc(var(--lh, 1.7) * 1em + var(--qm-extra));
+  line-height: calc(var(--lh, 1.7) * 1em);
 
   /* ---- ধাপ ২: input box ----
-     box লম্বা হলো, কিন্তু উপরে সরানো হলো। তাই নিচের দাগ (underline) আগের জায়গাতেই থাকে,
-     আর float একই এক লাইনের জায়গা নেয়, লেখার লেআউট বদলায় না। */
-  height: calc(var(--lh, 1.7) * 1em + var(--qm-extra) + 1px);
-  margin-top: calc(-1px - var(--qm-extra));
+     box শুরু হয় প্রশ্নের প্রথম লাইনের উপর থেকে (margin-top = --qm-extra), ঠিক যেখানে প্রশ্নের লেখা শুরু।
+     তাই মানের লেখা আর প্রশ্নের লেখা একই লাইনে থাকে, জায়গা কম হলেও উপরে ওঠে না। */
+  height: calc(var(--lh, 1.7) * 1em + 1px);
+  margin-top: var(--qm-extra);
 }
 .qmark:focus { background: rgba(37, 99, 235, .08); border-bottom-color: var(--accent); }
 .qmark::placeholder { color: #94a3b8; font-weight: 400; }
@@ -992,6 +994,7 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
 @page { margin: 10mm; }
 @media print {
   html, body { background: #fff !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .topbar, .side, .scrim, .dock-wrap, .toast, .help, .seam-note, .overlay { display: none !important; }
   .app { padding: 0 !important; overflow: visible; }
   .sheet-wrap { width: auto; zoom: 1 !important; }
@@ -1054,6 +1057,7 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
 /* ================= Multi-copy print layout ================= */
 .print-multi { display: none; }
 .print-copy-intro { margin: 0 0 10px; font-weight: 700; }
+.print-copy-options.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .print-copy-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 16px; }
 .print-copy-option { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 72px; padding: 10px 6px; border: 1px solid var(--line, #cbd5e1); border-radius: 10px; background: #fff; color: #0f172a; cursor: pointer; font: inherit; }
 .print-copy-option b { font-size: 15px; }
@@ -1067,8 +1071,11 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
 }
 
 @media print {
-  html, body { margin: 0 !important; padding: 0 !important; }
-  .print-multi[data-copies] { display: grid !important; width: 100%; height: 100vh; margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; gap: 2px; }
+  html, body { margin: 0 !important; padding: 0 !important; min-width: 0 !important; -webkit-text-size-adjust: none; text-size-adjust: none; }
+  html:has(.print-multi[data-paper="portrait"][data-copies]), html:has(.print-multi[data-paper="portrait"][data-copies]) body { width: 210mm !important; }
+  html:has(.print-multi[data-paper="landscape"][data-copies]), html:has(.print-multi[data-paper="landscape"][data-copies]) body { width: 297mm !important; }
+  .print-copy-sheet { zoom: 1 !important; }
+  .print-multi[data-copies] { display: grid !important; width: 297mm; height: 209mm; margin: 0; padding: 0; box-sizing: border-box; overflow: hidden; gap: 2px; }
   .app:has(.print-multi[data-copies]) .sheet-wrap,
   .app:has(.print-multi[data-copies]) .seam-note { display: none !important; }
   .print-multi[data-copies="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: 1fr; }
@@ -1076,12 +1083,31 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   /* Keep the paper's outer edge clean: draw cut guides only between copies. */
   .print-copy-cell { position: relative; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; box-sizing: border-box; border: 0; break-inside: avoid; page-break-inside: avoid; }
   .print-multi[data-copies="2"] .print-copy-cell:first-child { border-right: 0.25mm dashed #64748b; }
+  /* the copy page is sized in millimetres of the paper (never the screen's 100vh / 100%), so a phone prints like a computer.
+     Its height is a millimetre less than the paper, so rounding never spills a blank second page */
+  .print-multi[data-paper="landscape"] { width: 297mm; height: 209mm; }
+  .print-multi[data-paper="portrait"] { width: 210mm; height: 296mm; }
+  /* 2 copies one above the other (portrait paper) */
+  .print-multi[data-paper="portrait"][data-copies="2"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+  .print-multi[data-paper="portrait"][data-copies="2"] .print-copy-cell:first-child { border-right: 0; border-bottom: 0.25mm dashed #64748b; }
   .print-multi[data-copies="4"] .print-copy-cell:nth-child(1) { border-right: 0.25mm dashed #64748b; border-bottom: 0.25mm dashed #64748b; }
   .print-multi[data-copies="4"] .print-copy-cell:nth-child(2) { border-bottom: 0.25mm dashed #64748b; }
   .print-multi[data-copies="4"] .print-copy-cell:nth-child(3) { border-right: 0.25mm dashed #64748b; }
   .print-copy-sheet { position: absolute !important; top: 0 !important; left: 0 !important; max-width: none !important; margin: 0 !important; padding: var(--mt, 0.2cm) var(--mr, 0.2cm) var(--mb, 0.2cm) var(--ml, 0.2cm) !important; box-sizing: border-box !important; transform-origin: top left !important; box-shadow: none !important; background-color: #fff !important; }
   .print-copy-sheet[data-copy-layout="2"] { width: 210mm !important; height: 297mm !important; min-height: 297mm !important; transform: translate(var(--cx, 0mm), var(--cy, 0mm)) scale(var(--cs, 0.70710678)) !important; }
   .print-copy-sheet[data-copy-layout="4"] { width: 297mm !important; height: 210mm !important; min-height: 210mm !important; transform: translate(var(--cx, 0mm), var(--cy, 0mm)) scale(var(--cs, 0.5)) !important; }
+  /* 2 copies one above the other: the copy is laid out at its own width/height (--cw x --chh), then moved and scaled into its cell */
+  .print-copy-sheet[data-copy-layout="2s"] { width: var(--cw, 210mm) !important; height: var(--chh, 148mm) !important; min-height: 0 !important; transform: translate(var(--cx, 0mm), var(--cy, 0mm)) scale(var(--cs, 0.5)) !important; }
+  /* cut guides: full-length black dashed lines between the copies. They are drawn on the page grid itself (not on each
+     cell's border), so thin grey borders can no longer vanish on a phone's print */
+  .print-copy-cell { border: 0 !important; }
+  .print-multi[data-copies] { position: relative; }
+  .print-multi[data-copies]::before, .print-multi[data-copies]::after { content: ""; position: absolute; z-index: 5; pointer-events: none; display: none; }
+  .print-multi[data-copies="2"]::before { display: block; left: 50%; top: 0; bottom: 0; border-left: 0.4mm dashed #000; }
+  .print-multi[data-paper="portrait"][data-copies="2"]::before { display: none; }
+  .print-multi[data-paper="portrait"][data-copies="2"]::after { display: block; left: 0; right: 0; top: 50%; border-top: 0.4mm dashed #000; }
+  .print-multi[data-copies="4"]::before { display: block; left: 50%; top: 0; bottom: 0; border-left: 0.4mm dashed #000; }
+  .print-multi[data-copies="4"]::after { display: block; left: 0; right: 0; top: 50%; border-top: 0.4mm dashed #000; }
   .print-copy-sheet .pm[data-flow] .pg { break-before: auto !important; page-break-before: auto !important; }
   .print-copy-sheet .host { background: transparent !important; box-shadow: none !important; }
   /* the heading rule is scaled down with its copy; this keeps it at a fixed thickness (0.6 mm) so it prints on every copy */
@@ -1089,6 +1115,5 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   .print-copy-sheet [contenteditable="false"] { outline: none !important; }
 }
 
-/* the size control of the copies in the print dialog */
-.copy-size { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 14px; }
-.copy-size-lbl { font-weight: 600; }
+/* a short message while the PDF is being made */
+.pdf-busy { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(15, 23, 42, .45); color: #fff; font-size: 18px; font-weight: 700; }

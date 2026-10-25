@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { exportPdf } from './pdfExport';
 import { Core, toBn, toAscii, SHAPES, plainMath } from './editor.js';
 import { blankDoc, sampleDoc } from './templates.js';
 import { Btn, Menu, Modal, MathPreview, Group } from './ui.jsx';
@@ -67,40 +68,16 @@ const BLOCK_LABEL = { q: 'এই প্রশ্নটি', sec: 'এই শি�
 // English paper: marks such as "১×১০ = ১০" are shown with English digits: "1×10 = 10"
 const toEnDigits = (s) => toAscii(s);
 
-// Multi-copy print: every copy is made smaller when it is longer than its cell, so no line is cut off.
-// Each copy is measured as it lays out, then gets its own scale. The cells are 2 px apart.
-// the default size of a copy for 1, 2 and 4 copies on a page
-const COPY_PCT_DEFAULT = { 1: 100, 2: 100, 4: 140 };
+// Paper zoom, one model for every device: 100% = the real A4 size (794 px wide), the same on a phone and on a computer.
+// The buttons and Ctrl + mouse wheel move along ZOOM_STEPS; two fingers zoom freely inside the same range.
+const ZOOM_MIN = 40;
+const ZOOM_MAX = 250;
+const ZOOM_STEPS = [40, 50, 60, 75, 90, 100, 125, 150, 175, 200, 250];
+const clampZoom = (pct) => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(pct)));
 
-const fitCopies = (host, copies, factor = 1) => {
-  const mm = 96 / 25.4;
-  const gap = 2 / mm; // 2 px in mm
-  const sheetW = copies === 2 ? 210 : 297;
-  const sheetH = copies === 2 ? 297 : 210;
-  const cellW = (297 - gap) / 2;
-  const cellH = copies === 2 ? 210 : (210 - gap) / 2;
-  const saved = host.getAttribute('style');
-  Object.assign(host.style, { display: 'grid', position: 'absolute', left: '-10000px', top: '0', width: '297mm', visibility: 'hidden' });
-  host.dataset.copies = String(copies);
-  host.querySelectorAll('.print-copy-sheet').forEach((clone) => {
-    const own = clone.getAttribute('style'); // the page size variables set by doPrint
-    clone.style.width = `${sheetW}mm`;
-    clone.style.height = 'auto';
-    clone.style.minHeight = '0';
-    clone.style.maxWidth = 'none';
-    const contentMm = clone.offsetHeight / mm;
-    const fit = Math.min(1, cellW / sheetW, cellH / contentMm);
-    const scale = fit * factor;
-    if (own === null) clone.removeAttribute('style');
-    else clone.setAttribute('style', own);
-    // the scaled copy sits in the middle of its cell, so a short or narrow copy is not pushed to one side
-    clone.style.setProperty('--cs', scale.toFixed(4));
-    clone.style.setProperty('--cx', `${((cellW - sheetW * scale) / 2).toFixed(2)}mm`);
-    clone.style.setProperty('--cy', `${((cellH - sheetH * scale) / 2).toFixed(2)}mm`);
-  });
-  if (saved === null) host.removeAttribute('style');
-  else host.setAttribute('style', saved);
-};
+// the paper of a multi-copy print, the same on every device: 2 copies "one above the other" on portrait A4,
+// everything else on landscape A4
+const copyPaper = (copies, stack) => (copies === 2 && stack ? 'portrait' : 'landscape');
 
 // save a preference and update its state in one go
 const pref = (setter, key, value) => {
@@ -114,23 +91,8 @@ export default function App() {
   const printMultiRef = useRef(null);
   const coreRef = useRef(null);
   const [printCopies, setPrintCopies] = useState(1);
-  // the size of each copy, in percent of the automatic fit, for 1, 2 and 4 copies (100 = fit to the cell); saved on this computer
-  const [copyPcts, setCopyPcts] = useState(() => {
-    try {
-      const v = JSON.parse(LS.get('qgen-copypcts') || 'null');
-      if (v && [1, 2, 4].every((k) => typeof v[k] === 'number')) return { ...COPY_PCT_DEFAULT, ...v };
-    } catch (e) {
-      /* ignore */
-    }
-    return COPY_PCT_DEFAULT;
-  });
-  const copyPctsRef = useRef(copyPcts);
-  copyPctsRef.current = copyPcts;
-  const changeCopyPct = (n, d) => {
-    const next = { ...copyPcts, [n]: Math.min(150, Math.max(50, Math.round(copyPcts[n] + d))) };
-    setCopyPcts(next);
-    LS.set('qgen-copypcts', JSON.stringify(next));
-  };
+  const [printStack, setPrintStack] = useState(false); // 2 copies: false = side by side, true = one above the other
+  const [busy, setBusy] = useState(false); // the PDF is being made
 
   const [lang, setLang] = useState(() => LS.get('qgen-lang') || 'bn');
   const [st, setSt] = useState({});
@@ -251,18 +213,26 @@ export default function App() {
     return () => clearTimeout(t);
   }, [notice]);
 
-  // fit the A4 sheet to the screen (phones get a smaller zoom)
+  // fit the A4 sheet to the width of the work area (never above 100%, never below the minimum zoom)
   useEffect(() => {
     const fit = () => {
-      // use the real device width on phones (innerWidth can grow to fit the wide sheet)
-      const w = Math.min(window.innerWidth, window.screen.width || window.innerWidth);
-      setScale(Math.max(0.3, Math.min(1, (w - 16) / page.px)));
+      const ap = document.querySelector('.app');
+      let avail = window.innerWidth - 16;
+      if (ap) {
+        const cs = window.getComputedStyle(ap);
+        // on a phone the layout width can grow to fit the wide sheet, so the real screen width caps it
+        const full = Math.min(ap.clientWidth, window.screen.width || ap.clientWidth);
+        avail = full - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+      }
+      setScale(Math.max(ZOOM_MIN / 100, Math.min(1, avail / page.px)));
     };
     fit();
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    const ap = document.querySelector('.app');
+    const ro = typeof ResizeObserver !== 'undefined' && ap ? new ResizeObserver(fit) : null;
+    if (ro) ro.observe(ap);
+    return () => { window.removeEventListener('resize', fit); if (ro) ro.disconnect(); };
   }, [page.px]);
-
   
 
   // paper zoom: 0 = fit the screen width (the default); otherwise a percentage the teacher chose
@@ -296,7 +266,12 @@ export default function App() {
       headInCols: pageMode === 'two',
     });
   }, [pageMode, orient, margins, base, lh, qgap, font, lang]);
-  const zoomStep = (d) => setZoomPct(Math.min(250, Math.max(40, Math.round(zoomNow * 100) + d)));
+  // dir > 0: the next bigger step, dir < 0: the next smaller step (from any zoom, even the fitted one)
+  const zoomStep = (dir) => {
+    const cur = Math.round(zoomNow * 100);
+    const next = dir > 0 ? ZOOM_STEPS.find((z) => z > cur) : [...ZOOM_STEPS].reverse().find((z) => z < cur);
+    setZoomPct(clampZoom(next === undefined ? cur : next));
+  };
 
   // two fingers on the paper zoom it in / out, centred between the fingers (pinch)
   const zoomRef = useRef(zoomNow);
@@ -326,7 +301,7 @@ export default function App() {
       const [a, b] = [...touches.values()];
       const m = mid(a, b);
       const zOld = zoomRef.current;
-      const zNew = Math.min(2.5, Math.max(0.4, start.z * (dist(a, b) / start.d)));
+      const zNew = clampZoom(start.z * (dist(a, b) / start.d) * 100) / 100;
       if (Math.abs(zNew - zOld) < 0.005) return;
       // keep the point under the fingers where it is: remember it in paper units first
       const ap = app();
@@ -350,11 +325,21 @@ export default function App() {
         setPinching(false);
       }
     };
+    // Ctrl + mouse wheel (or a trackpad pinch) zooms the paper along the same steps as the buttons
+    const wheel = (e) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const cur = Math.round(zoomRef.current * 100);
+      const next = e.deltaY < 0 ? ZOOM_STEPS.find((z) => z > cur) : [...ZOOM_STEPS].reverse().find((z) => z < cur);
+      if (next !== undefined) setZoomPct(clampZoom(next));
+    };
+    window.addEventListener('wheel', wheel, { passive: false });
     window.addEventListener('pointerdown', down);
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
     window.addEventListener('pointercancel', up);
     return () => {
+      window.removeEventListener('wheel', wheel);
       window.removeEventListener('pointerdown', down);
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
@@ -364,50 +349,34 @@ export default function App() {
   }, []);
 
   // ---------- actions ----------
-  const doPrint = useCallback((copies = 1) => {
+  // The PDF is drawn inside the app at a fixed A4 size (pdfExport.js), so it is the same on a phone and on a computer.
+  const layoutRef = useRef(null);
+  layoutRef.current = { orient, margins };
+  const doPrint = useCallback(async (copies = 1, stack = false) => {
+    const stacked = copies === 2 && stack;
     setPrintCopies(copies);
+    setPrintStack(stacked);
     setDlg(null);
-    setTimeout(() => {
+    setBusy(true);
+    try {
+      await new Promise((r) => setTimeout(r, 150)); // the dialog closes and the editor settles first
       core() && core().flush();
-      const host = printMultiRef.current;
-      if (host) {
-        host.replaceChildren();
-        if (copies > 1 && sheetRef.current) {
-          const source = sheetRef.current;
-          for (let i = 0; i < copies; i += 1) {
-            const cell = document.createElement('div');
-            cell.className = 'print-copy-cell';
-            const clone = source.cloneNode(true);
-            clone.classList.add('print-copy-sheet');
-            clone.classList.remove('portrait', 'landscape');
-            clone.classList.add(copies === 2 ? 'portrait' : 'landscape');
-            clone.dataset.copyLayout = String(copies);
-            clone.style.setProperty('--pw', copies === 2 ? '210mm' : '297mm');
-            // the copies use narrow side margins, so the paper fills its cell (top and bottom margins stay)
-            clone.style.setProperty('--ml', '0.5cm');
-            clone.style.setProperty('--mr', '0.5cm');
-            clone.style.setProperty('--ph', copies === 2 ? '297mm' : '210mm');
-            clone.querySelectorAll('.tbgrip, .tbrot, .tbsz, .dropmark, .pinch-badge').forEach((el) => el.remove());
-            clone.querySelectorAll('.imgsel, .mathsel, .csel, .focus').forEach((el) => el.classList.remove('imgsel', 'mathsel', 'csel', 'focus'));
-            const originals = source.querySelectorAll('input, textarea, select');
-            const copiesOfControls = clone.querySelectorAll('input, textarea, select');
-            originals.forEach((el, idx) => {
-              const cp = copiesOfControls[idx];
-              if (!cp) return;
-              if (el.tagName === 'INPUT') { cp.value = el.value; cp.setAttribute('value', el.value); cp.checked = el.checked; if (el.checked) cp.setAttribute('checked', ''); else cp.removeAttribute('checked'); }
-              else if (el.tagName === 'TEXTAREA') { cp.value = el.value; cp.textContent = el.value; }
-              else cp.value = el.value;
-            });
-            clone.querySelectorAll('[contenteditable]').forEach((el) => el.setAttribute('contenteditable', 'false'));
-            cell.appendChild(clone);
-            host.appendChild(cell);
-          }
-          fitCopies(host, copies, copyPctsRef.current[copies] / 100);
-        }
-      }
-      window.print();
-      if (host) { host.replaceChildren(); delete host.dataset.copies; }
-    }, 300);
+      const { orient: o, margins: m } = layoutRef.current;
+      await exportPdf({
+        sheet: sheetRef.current,
+        host: printMultiRef.current,
+        landscape: o === 'landscape',
+        margins: m,
+        copies,
+        stacked,
+        fileName: 'question-paper.pdf',
+      });
+    } catch (e) {
+      console.error(e);
+      window.alert('PDF বানাতে সমস্যা হয়েছে। আবার চেষ্টা করুন।');
+    } finally {
+      setBusy(false);
+    }
   }, []);
 
   const askPrint = () => setDlg({ type: 'print' });
@@ -531,7 +500,7 @@ export default function App() {
   return (
     <div className={`app ${side ? 'side-open' : 'side-rail'}`}>
       {/* the browser print dialog uses this page size */}
-      <style>{`@page { size: A4 ${printCopies > 1 ? 'landscape' : orient}; margin: ${printCopies > 1 ? '0' : `${mCss(margins.t)} ${mCss(margins.r)} ${mCss(margins.b)} ${mCss(margins.l)}`}; }`}</style>
+      <style>{`@page { size: A4 ${printCopies > 1 ? copyPaper(printCopies, printStack) : orient}; margin: ${printCopies > 1 ? '0' : `${mCss(margins.t)} ${mCss(margins.r)} ${mCss(margins.b)} ${mCss(margins.l)}`}; }`}</style>
 
       <header className="topbar" onMouseDown={keepCaret}>
         <button
@@ -863,9 +832,9 @@ export default function App() {
               <span className="fld-l">জুম</span>
               <div className="ctl-row">
                 <div className="seg">
-                  <Btn title="কাগজ ছোট করুন" onClick={() => zoomStep(-20)}>−</Btn>
+                  <Btn title="কাগজ ছোট করুন" onClick={() => zoomStep(-1)}>−</Btn>
                   <span className="tb-hint">{Math.round(zoomNow * 100)}%</span>
-                  <Btn title="কাগজ বড় করুন, মোবাইলে লেখা ও বস্তু বাছাই সহজ হবে" onClick={() => zoomStep(20)}>+</Btn>
+                  <Btn title="কাগজ বড় করুন, মোবাইলে লেখা ও বস্তু বাছাই সহজ হবে" onClick={() => zoomStep(1)}>+</Btn>
                 </div>
                 <Btn active={!zoomPct} title="পর্দার চওড়া অনুযায়ী কাগজ মানানসই করুন" onClick={() => setZoomPct(0)}>মানানসই</Btn>
               </div>
@@ -1133,6 +1102,7 @@ export default function App() {
         </div>
       )}
 
+      {busy && <div className="pdf-busy" role="status">PDF বানানো হচ্ছে…</div>}
       {pinching && <div className="pinch-badge">জুম {Math.round(zoomNow * 100)}%</div>}
       <div
         className="sheet-wrap"
@@ -1187,7 +1157,7 @@ export default function App() {
           }}
         />
       )}
-      {dlg && dlg.type === 'print' && <PrintDialog onClose={() => setDlg(null)} onPrint={doPrint} copyPcts={copyPcts} onChangePct={changeCopyPct} />}
+      {dlg && dlg.type === 'print' && <PrintDialog onClose={() => setDlg(null)} onPrint={doPrint} />}
     </div>
   );
 }
@@ -1475,8 +1445,9 @@ function MathDialog({ init, editing, onClose, onApply }) {
   );
 }
 
-function PrintDialog({ onClose, onPrint, copyPcts, onChangePct }) {
+function PrintDialog({ onClose, onPrint }) {
   const [copies, setCopies] = useState(1);
+  const [stack, setStack] = useState(false); // 2 copies: side by side or one above the other
   return (
     <Modal
       title="PDF / প্রিন্ট সেটিংস"
@@ -1486,7 +1457,7 @@ function PrintDialog({ onClose, onPrint, copyPcts, onChangePct }) {
           <button className="tbtn" onClick={onClose}>বাতিল</button>
           <button
             className="tbtn primary"
-            onClick={() => onPrint(copies)}
+            onClick={() => onPrint(copies, stack)}
           >
             PDF / প্রিন্ট করুন
           </button>
@@ -1495,23 +1466,28 @@ function PrintDialog({ onClose, onPrint, copyPcts, onChangePct }) {
     >
       <p className="print-copy-intro">একটি A4 পৃষ্ঠায় কতটি একই প্রশ্নপত্র রাখতে চান?</p>
       <div className="print-copy-options" role="radiogroup" aria-label="প্রতি পাতায় কপি">
-        {[{ n: 1, title: '১ কপি', desc: 'সাধারণ প্রিন্ট' }, { n: 2, title: '২ কপি', desc: 'ল্যান্ডস্কেপ, পাশাপাশি' }, { n: 4, title: '৪ কপি', desc: 'ল্যান্ডস্কেপ, ২ × ২' }].map((item) => (
+        {[{ n: 1, title: '১ কপি', desc: 'সাধারণ প্রিন্ট' }, { n: 2, title: '২ কপি', desc: 'এক পাতায় দুটি' }, { n: 4, title: '৪ কপি', desc: 'ল্যান্ডস্কেপ, ২ × ২' }].map((item) => (
           <button key={item.n} type="button" className={`print-copy-option ${copies === item.n ? 'on' : ''}`} onClick={() => setCopies(item.n)} aria-pressed={copies === item.n}>
             <b>{item.title}</b><span>{item.desc}</span>
           </button>
         ))}
       </div>
-      <div className="copy-size">
-        <span className="copy-size-lbl">প্রতি কপির মাপ</span>
-        <Btn className="small" title="ছোট করুন" onClick={() => onChangePct(copies, -5)}>−</Btn>
-        <span className="step-val">{copyPcts[copies]}%</span>
-        <Btn className="small" title="বড় করুন" onClick={() => onChangePct(copies, 5)}>+</Btn>
-        <button type="button" className="tbtn small" onClick={() => onChangePct(copies, COPY_PCT_DEFAULT[copies] - copyPcts[copies])}>স্বাভাবিক {COPY_PCT_DEFAULT[copies]}%</button>
-      </div>
+      {copies === 2 && (
+        <>
+          <p className="print-copy-intro">দুটি কপি কীভাবে বসবে?</p>
+          <div className="print-copy-options two" role="radiogroup" aria-label="দুই কপির বিন্যাস">
+            {[{ v: false, title: 'পাশাপাশি', desc: 'ল্যান্ডস্কেপ পাতা' }, { v: true, title: 'উপর-নিচে', desc: 'সোজা কপি, পোর্ট্রেট' }].map((item) => (
+              <button key={item.title} type="button" className={`print-copy-option ${stack === item.v ? 'on' : ''}`} onClick={() => setStack(item.v)} aria-pressed={stack === item.v}>
+                <b>{item.title}</b><span>{item.desc}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
       <ol className="steps">
         <li>প্রতিটি কপিতে স্কুলের নাম, পরীক্ষার তথ্য ও প্রশ্নসহ সম্পূর্ণ একই লেখা থাকবে।</li>
-        <li>প্রিন্টের জানালায় “Destination” থেকে <b>Save as PDF</b> বাছুন।</li>
-        <li>২ বা ৪ কপি বাছলে পেজ স্বয়ংক্রিয়ভাবে A4 Landscape হবে।</li>
+        <li>পাশাপাশি ও ৪ কপিতে পেজ A4 Landscape, উপর-নিচে বাছলে A4 Portrait। ফোন ও কম্পিউটারে এই বিন্যাস একই থাকে।</li>
+        <li>PDF ফাইল সরাসরি ডাউনলোড হবে। প্রিন্ট করতে ফাইলটি খুলে প্রিন্ট দিন।</li>
       </ol>
     </Modal>
   );
