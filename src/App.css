@@ -29,7 +29,8 @@ body {
 }
 
 /* a sheet zoomed bigger than the screen scrolls sideways inside the app, the page itself does not shrink */
-.app { --sw: 0px; padding: calc(var(--tbh, 56px) + 12px) 8px 120px calc(var(--sw) + 8px); overflow-x: auto; touch-action: pan-x pan-y; /* the browser does not zoom the page; two fingers zoom the paper */ }
+/* the bottom space grows with the keyboard (--kb), so the end of the paper can be scrolled above the bar and the keyboard */
+.app { --sw: 0px; padding: calc(var(--tbh, 56px) + 12px) 8px calc(120px + var(--kb, 0px)) calc(var(--sw) + 8px); overflow-x: auto; touch-action: pan-x pan-y; /* the browser does not zoom the page; two fingers zoom the paper */ }
 .pinch-badge {
   position: fixed;
   top: 12px;
@@ -306,7 +307,9 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
 .sym:hover { background: var(--accent-soft); }
 
 /* ---------- floating bar for the selected object (block, text box, picture, formula, table) ---------- */
-.dock-wrap { position: fixed; z-index: 45; left: var(--sw); right: 0; bottom: calc(12px + var(--kb, 0px)); display: flex; justify-content: center; padding: 0 12px; pointer-events: none; transition: bottom .22s cubic-bezier(.2, .8, .2, 1); will-change: bottom; }
+.dock-wrap { position: fixed; z-index: 45; left: var(--sw); right: 0; bottom: 12px; display: flex; justify-content: center; padding: 0 12px; pointer-events: none; transition: bottom .22s cubic-bezier(.2, .8, .2, 1); will-change: bottom; }
+/* while the page is moving, the bar is not eased, so it stays right on the keyboard's edge */
+.dock-moving .dock-wrap { transition: none; }
 .ctxdock {
   display: flex;
   flex-wrap: wrap;
@@ -374,7 +377,7 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   .chip { padding: 0 10px; }
   .tbtn { min-height: 40px; }
   .tbtn.small, .ctx-row .tbtn { min-height: 36px; }
-  .dock-wrap { bottom: calc(8px + var(--kb, 0px)); padding: 0 8px; }
+  .dock-wrap { bottom: 8px; padding: 0 8px; }
   .ctxdock { flex-direction: column; align-items: stretch; flex-wrap: nowrap; max-height: min(38vh, calc(var(--vvh, 100vh) - 28px)); }
   .ctx-row { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
   .ctx-row::-webkit-scrollbar { display: none; }
@@ -799,6 +802,7 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
 
 .sec { margin: 12px 0 4px; break-after: avoid; }
 .sec .host { text-align: center; font-weight: 700; text-decoration: underline; }
+.sec[data-nounder] .host { text-decoration: none; }
 .note { margin: 6px 0; }
 
 /* sub-questions */
@@ -1365,3 +1369,63 @@ body {
 @media screen and (prefers-reduced-motion: reduce) {
   .sheet-wrap, .side .grp, .modal, .chip.warn-chip::before, .pdf-busy::before { animation: none !important; }
 }
+
+
+/* ================= equation (সমীকরণ): fractions, roots, brackets, powers inside one another ================= */
+.mi-ex { display: inline-block; vertical-align: middle; }
+.mx-row { display: inline-flex; align-items: center; white-space: pre; line-height: 1.2; }
+.mx-t { white-space: pre; }
+.mx-empty { opacity: .6; }
+.mx-fn { margin-right: .14em; }
+.mx-big { font-size: 1.5em; line-height: 1; }
+/* fraction: the bar is as wide as the wider of the top and the bottom */
+.mx-fr { display: inline-flex; flex-direction: column; align-items: stretch; vertical-align: middle; font-size: .95em; margin: 0 .08em; }
+.mx-n, .mx-d { display: flex; justify-content: center; padding: 0 .25em; text-align: center; }
+.mx-n { border-bottom: 1px solid currentColor; padding-bottom: .04em; }
+.mx-d { padding-top: .12em; }
+.mx-fr .mx-fr { font-size: .92em; }
+/* power / subscript: they sit at the top / bottom of whatever is before them, even a tall bracket or fraction */
+.mx-sc { display: inline-flex; align-items: stretch; }
+.mx-bs { display: inline-flex; align-items: center; }
+.mx-ss { display: flex; flex-direction: column; justify-content: space-between; font-size: .62em; line-height: 1.15; margin-left: .06em; }
+.mx-ss.only-sup { justify-content: flex-start; }
+.mx-ss.only-sub { justify-content: flex-end; }
+/* root: a normal root uses the √ sign; a tall one (a fraction inside) gets a sign that stretches */
+.mx-sq { display: inline-flex; align-items: stretch; margin: 0 .06em; }
+.mx-ix { font-size: .6em; align-self: flex-start; margin: 0 -.35em 0 .05em; }
+.mx-rd { flex: none; display: flex; align-items: center; line-height: 1; }
+.mx-rad { border-top: 1px solid currentColor; padding: 0 .2em 0 .04em; display: flex; align-items: center; }
+.mx-sq.tall .mx-rd { width: .8em; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='100' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M3 60 L22 54 L44 97 L100 1' fill='none' stroke='%23000' stroke-width='1.4' stroke-linejoin='miter' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E") no-repeat 0 0 / 100% 100%; }
+/* brackets: the normal ones are text; around a fraction or root they stretch to the full height */
+.mx-g { display: inline-flex; align-items: stretch; }
+.mx-in { display: inline-flex; align-items: center; }
+.mx-p { display: flex; align-items: center; }
+.mx-g.tall .mx-p { flex: none; width: .42em; overflow: hidden; color: transparent; background: no-repeat center / 100% 100%; }
+.mx-g.tall .mx-lp { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='100' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M82 1 Q18 50 82 99' fill='none' stroke='%23000' stroke-width='1.3' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"); }
+.mx-g.tall .mx-rp { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='100' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M18 1 Q82 50 18 99' fill='none' stroke='%23000' stroke-width='1.3' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"); }
+.mx-g.tall.sqb .mx-lp { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='100' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M90 1 L25 1 L25 99 L90 99' fill='none' stroke='%23000' stroke-width='1.3' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"); }
+.mx-g.tall.sqb .mx-rp { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='100' viewBox='0 0 100 100' preserveAspectRatio='none'%3E%3Cpath d='M10 1 L75 1 L75 99 L10 99' fill='none' stroke='%23000' stroke-width='1.3' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"); }
+/* ∑ ∏ lim: the limits above and below */
+.mx-lim { display: inline-flex; flex-direction: column; align-items: center; }
+.mx-lt { font-size: .62em; line-height: 1.1; }
+.mx-lb { display: flex; align-items: center; line-height: 1.15; }
+/* line above / under, arrow above */
+.mx-ov { display: inline-flex; flex-direction: column; align-items: center; }
+.mx-ov.bar { border-top: 1px solid currentColor; }
+.mx-ov.under { border-bottom: 1px solid currentColor; }
+.mx-va { font-size: .7em; line-height: .7; }
+
+/* the equation box in the math dialog */
+.expr-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
+.expr-tools.sym .tbtn { min-width: 34px; justify-content: center; }
+.expr-in { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--line, #cbd5e1); border-radius: 10px; font: 15px/1.5 ui-monospace, Consolas, monospace; resize: vertical; margin: 2px 0 10px; }
+.expr-in:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(0, 163, 122, .22); border-color: #00a37a; }
+.expr-prev { margin-top: 6px; min-height: 64px; padding: 12px; overflow-x: auto; display: flex; align-items: center; background: #fff; border: 1px dashed #b7c9c0; border-radius: 10px; font-size: 20px; color: #000; }
+
+/* equation box: an empty box and the short hint under it (the hint is only in the preview) */
+.mx-bx { display: inline-flex; flex-direction: column; align-items: center; vertical-align: middle; }
+.mx-hint { font: 600 11px/1.2 system-ui, sans-serif; color: #56677d; white-space: nowrap; }
+
+/* equation preview: a line for each kind of box used, with what goes in it */
+.expr-guide { margin: 4px 0 10px; padding-left: 18px; font-size: 14px; line-height: 1.7; color: #334155; }
+.expr-guide b { font-family: ui-monospace, Consolas, monospace; color: #0f5132; }

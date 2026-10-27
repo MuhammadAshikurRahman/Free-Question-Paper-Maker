@@ -6,6 +6,7 @@
 // break the structure of the paper. Question numbers come from CSS counters.
 
 import { BLOCKS, esc } from './templates.js';
+import { exprHTML } from './mathExpr.js';
 
 const HOST = '[contenteditable="true"]';
 
@@ -118,6 +119,11 @@ export function plainMath(html) {
 export const ACC_MARKS = ['hat', 'bar', 'dot', 'ddot', 'tilde', 'arrow', 'ubar'];
 
 export function mathHTML(a) {
+  // equation: fractions, roots, brackets and powers one inside another (see mathExpr.js)
+  if (a.kind === 'expr') {
+    const src = String(a.src || '').replace(/\s*[\r\n]+\s*/g, ' ');
+    return `<span class="mi mi-ex" contenteditable="false" data-kind="expr" data-src="${esc(src)}">${exprHTML(src)}</span>`;
+  }
   // underbar (like Word's Underbar): lines stacked one under another, the bar under the last line
   if (a.kind === 'ubar') {
     const rows = String(a.val || '').split('\n').filter((r) => r.trim() !== '');
@@ -1029,7 +1035,7 @@ export class Core {
     return {
       bold: q('bold'),
       italic: q('italic'),
-      underline: q('underline'),
+      underline: blk && blk.matches('.sec') ? !blk.hasAttribute('data-nounder') : q('underline'),
       sup: q('superscript'),
       sub: q('subscript'),
       blk: blk ? blk.dataset.blk : '',
@@ -1240,6 +1246,16 @@ export class Core {
   exec(cmd) {
     this.ensureSel();
     if (!this.curNode()) return this.notice('আগে যে লেখাটি বদলাতে চান সেখানে ক্লিক করে সিলেক্ট করুন।');
+    // A section heading (বিভাগ) is underlined by the paper's own style (CSS), and a style on the whole heading cannot be
+    // taken away from a part of its text. So the U button switches the underline of the whole heading on and off.
+    const blk = cmd === 'underline' ? this.currentBlock() : null;
+    if (blk && blk.matches('.sec')) {
+      this.flush();
+      if (blk.hasAttribute('data-nounder')) blk.removeAttribute('data-nounder');
+      else blk.setAttribute('data-nounder', '1');
+      this.commit();
+      return;
+    }
     document.execCommand(cmd, false, null);
     this.commit();
   }
@@ -1332,13 +1348,42 @@ export class Core {
   moveBlock(dir) {
     const b = this.currentBlock();
     if (!b) return this.notice('আগে যে প্রশ্ন/ঘরটি সরাতে চান তার ভেতরে ক্লিক করুন।');
-    const sib = dir < 0 ? b.previousElementSibling : b.nextElementSibling;
-    if (!sib) return;
+    // While the page columns are on, the blocks sit in page boxes and come back in their order number (data-ord)
+    // whenever the pages are made again, so a move done among the column neighbours was undone at once.
+    // The move is done on the paper's own order: the page boxes are taken away first, the block is moved among its
+    // neighbours, and the commit makes the pages again.
+    let origin = b;
+    if (b.classList.contains('cont') && b.dataset.ord !== undefined) {
+      // the rest of a split question: the question itself is the piece that carries the number and the marks
+      const k = Math.floor(Number(b.dataset.ord));
+      origin = Array.from(this.root.querySelectorAll('.pcol > *')).find(
+        (u) => !u.classList.contains('cont') && Number(u.dataset.ord) === k
+      ) || b;
+    }
     const saved = this.saveSel();
-    this.mutate(() => (dir < 0 ? sib.before(b) : sib.after(b)));
+    let moved = null;
+    this.mutate(() => {
+      origin.setAttribute('data-mv', '1'); // set here, so the undo history never holds it
+      unwrapPages(this.root);
+      moved = this.root.querySelector('[data-mv]');
+      if (!moved) return;
+      moved.removeAttribute('data-mv');
+      const step = (el) => {
+        let s = dir < 0 ? el.previousElementSibling : el.nextElementSibling;
+        while (s && !s.classList.contains('blk')) s = dir < 0 ? s.previousElementSibling : s.nextElementSibling;
+        return s;
+      };
+      const sib = step(moved);
+      if (sib) {
+        if (dir < 0) sib.before(moved);
+        else sib.after(moved);
+      }
+    });
+    this.root.querySelectorAll('[data-mv]').forEach((el) => el.removeAttribute('data-mv'));
     // host indices changed after the move; re-place the caret inside the moved block
-    const h = b.querySelector(HOST);
+    const h = moved && moved.querySelector(HOST);
     if (h && saved) this.caretIn(h);
+    if (moved) moved.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }
 
   deleteBlock() {
@@ -1864,6 +1909,9 @@ export class Core {
   // a press in the margin beside a line (outside the text) puts the caret at that line's start or end
   onSheetPress(e) {
     if (e.button !== 0 || this.root.contains(e.target)) return;
+    // a text box, field or button that sits over the paper (the equation dialog, for example) keeps its own focus:
+    // a press there is not a press on the paper, or the phone keyboard does not open
+    if (e.target.closest && e.target.closest('textarea, input, select, button, [contenteditable="true"], [role="dialog"]')) return;
     const hit = Array.from(this.root.querySelectorAll('.host')).find((h) => {
       const r = h.getBoundingClientRect();
       return e.clientY >= r.top && e.clientY <= r.bottom && !h.closest('.pbox');

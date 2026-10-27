@@ -4,6 +4,7 @@ import { Core, toBn, toAscii, SHAPES, plainMath } from './editor.js';
 import { blankDoc, sampleDoc } from './templates.js';
 import { Btn, Menu, Modal, MathPreview, Group } from './ui.jsx';
 import { Icon } from './icons.jsx';
+import { exprHTML, exprHasContent, exprGuide } from './mathExpr.js';
 
 const LS = {
   get(k) {
@@ -100,25 +101,76 @@ export default function App() {
     const vv = window.visualViewport;
     if (!vv) return undefined;
     const root = document.documentElement;
-    let raf = 0;
+    let frame = 0;
+    let moveTimer = 0;
+    let typingTimer = 0;
+    // Measures the keyboard and puts the bar on the bottom edge of what the person can see.
+    //  - --kb is the height of the area the keyboard covers (0 when there is none); it only gives the page its end space.
+    //  - The bar is placed by its top edge: visible bottom = vv.offsetTop + vv.height, measured from the top of the page.
+    //    This works for every case: keyboard open, the visible area panned inside the page while scrolling, the address
+    //    bar showing or hiding. There is no limit below which it is "not a keyboard", so there is no spot where it hangs.
+    // Returns true while the bar has to be followed on every frame.
+    const measure = () => {
+      const covered = Math.round(window.innerHeight - vv.height);
+      const keyboard = covered > 100;
+      root.style.setProperty('--kb', `${keyboard ? covered : 0}px`);
+      root.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
+      const gap = Math.round(window.innerHeight - (vv.offsetTop + vv.height)); // visible bottom to the page's bottom
+      const dock = document.querySelector('.dock-wrap');
+      if (dock) {
+        if (gap > 1) {
+          dock.style.bottom = 'auto';
+          dock.style.top = `${Math.round(vv.offsetTop + vv.height - dock.offsetHeight - 8)}px`;
+        } else {
+          // the visible area reaches the page's bottom: the CSS place (a few px above the bottom) is the right one
+          dock.style.bottom = '';
+          dock.style.top = '';
+        }
+      }
+      return keyboard || gap > 1;
+    };
+    // while the keyboard is open it is measured on every frame: some browsers do not send visualViewport events
+    // while the page scrolls, and then the bar would be left behind
+    const frameLoop = () => {
+      frame = measure() ? requestAnimationFrame(frameLoop) : 0;
+    };
     const update = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        const kb = Math.round(window.innerHeight - vv.height - vv.offsetTop);
-        // a small difference is only the browser's address bar, not a keyboard
-        root.style.setProperty('--kb', `${kb > 100 ? kb : 0}px`);
-        root.style.setProperty('--vvh', `${Math.round(vv.height)}px`);
-      });
+      if (!frame && measure()) frame = requestAnimationFrame(frameLoop);
+    };
+    // while the page moves, the bar is not eased, so it stays right on the keyboard's edge
+    const onScroll = () => {
+      root.classList.add('dock-moving');
+      clearTimeout(moveTimer);
+      moveTimer = setTimeout(() => root.classList.remove('dock-moving'), 250);
+      update();
+    };
+    // a text field being focused means the keyboard is about to open (or close, when focus leaves it)
+    const onFocusIn = () => {
+      clearTimeout(typingTimer);
+      update();
+    };
+    const onFocusOut = () => {
+      clearTimeout(typingTimer);
+      typingTimer = setTimeout(update, 300);
     };
     vv.addEventListener('resize', update);
     vv.addEventListener('scroll', update);
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     window.addEventListener('orientationchange', update);
+    document.addEventListener('focusin', onFocusIn);
+    document.addEventListener('focusout', onFocusOut);
     update();
     return () => {
-      cancelAnimationFrame(raf);
+      if (frame) cancelAnimationFrame(frame);
+      clearTimeout(moveTimer);
+      clearTimeout(typingTimer);
       vv.removeEventListener('resize', update);
       vv.removeEventListener('scroll', update);
+      window.removeEventListener('scroll', onScroll, { capture: true });
       window.removeEventListener('orientationchange', update);
+      document.removeEventListener('focusin', onFocusIn);
+      document.removeEventListener('focusout', onFocusOut);
+      root.classList.remove('dock-moving');
       root.style.removeProperty('--kb');
       root.style.removeProperty('--vvh');
     };
@@ -215,6 +267,7 @@ export default function App() {
             num: el.dataset.num || '',
             den: el.dataset.den || '',
             val: el.dataset.val || '',
+            src: el.dataset.src || '',
             npow: el.dataset.npow || '',
             dpow: el.dataset.dpow || '',
             nsub: el.dataset.nsub || '',
@@ -1106,16 +1159,6 @@ export default function App() {
                 <Btn className="danger" title="আকারটি মুছুন" onClick={() => core().imgDelete()}>✕ আকার মুছুন</Btn>
               </div>
             )}
-            {st.math && (
-              <div className="ctx-row">
-                <span className="tb-label">ভগ্নাংশ:</span>
-                <Btn title="ভগ্নাংশের আগে কার্সর" onClick={() => core().mathMove('before')}>◀ আগে কার্সর</Btn>
-                <Btn title="ভগ্নাংশের পরে কার্সর" onClick={() => core().mathMove('after')}>পরে কার্সর ▶</Btn>
-                <Btn title="ভগ্নাংশ বদলান" onClick={() => core().mathEdit()}>✎ বদলান</Btn>
-                <Btn className="danger" title="ভগ্নাংশ মুছুন" onClick={() => core().mathDelete()}>✕ মুছুন</Btn>
-              </div>
-            )}
-
             {st.inTable && (
               <div className="ctx-row">
                 <span className="tb-label">টেবিল ডিজাইন:</span>
@@ -1323,6 +1366,134 @@ function RichField({ value, onChange, onActive, placeholder, autoFocus, onEnter 
 }
 
 // accent marks and the underbar for the accent kind (value = name used in the paper)
+// The equation box: a text box, buttons that put a template in it, and a live preview.
+// Templates: "|" is where the cursor goes (or where the selected text is put).
+const EXPR_TEMPLATES = [
+  { t: 'ভগ্নাংশ', tip: 'উপরের { } এ লব, নিচের { } এ হর', v: '{|}/{}' },
+  { t: '√ মূল', tip: 'বর্গমূল: √ এর পরের { } এর ভেতরে লিখুন', v: '√{|}' },
+  { t: 'ⁿ√ মূল', tip: 'ঘনমূল ইত্যাদি: [ ] এর ভেতরে মূলের সংখ্যা', v: '√[|]{}' },
+  { t: '( ) বন্ধনী', tip: 'বন্ধনী', v: '(|)' },
+  { t: '( )² বন্ধনীর ঘাত', tip: 'বন্ধনীর ওপরে ঘাত', v: '(|)^{}' },
+  { t: 'x² ঘাত', tip: 'আগের অক্ষর বা বন্ধনীর ওপরে ছোট সংখ্যা', v: '^{|}' },
+  { t: 'x₂ নিচে', tip: 'নিচের ছোট সংখ্যা', v: '_{|}' },
+  { t: 'ওপরে দাগ', tip: 'অক্ষরের ওপরে দাগ', v: '‾{|}' },
+  { t: 'ভেক্টর →', tip: 'ওপরে তীর', v: '→{|}' },
+  { t: '∑ যোগ', tip: 'সীমাসহ যোগফল', v: '∑_{|}^{}' },
+  { t: '∫ ইন্টিগ্রাল', tip: 'সীমাসহ ইন্টিগ্রাল', v: '∫_{|}^{}' },
+  { t: 'lim', tip: 'লিমিট', v: 'lim_{|}' },
+];
+const EXPR_SYMBOLS = ['×', '÷', '±', '=', '≠', '≈', '≤', '≥', '<', '>', 'π', 'θ', 'α', 'β', '∞', '°', '∠', '△', '∴', '∵'];
+const EXPR_EXAMPLES = [
+  { t: '(a+b)² ÷ c', v: '{(a+b)^2}/{c}' },
+  { t: 'মূলের ভেতর ভগ্নাংশ', v: '√{{a}/{b}}' },
+  { t: 'বন্ধনীর ভেতর ভগ্নাংশ', v: '({a}/{b}+c)^2' },
+  { t: 'লব-হরে মূল ও ঘাত', v: '{√{x^2+y^2}}/{(p+q)^3}' },
+];
+
+function ExprBox({ src, setSrc, onEnter }) {
+  const ref = useRef(null);
+  const [picked, setPicked] = useState(null); // the button pressed last: it stays highlighted
+  const caretAt = useRef(null); // where the cursor goes after a button has put its text in
+
+  // runs after every render: when a button has set caretAt, the cursor goes there once the new text is shown
+  useEffect(() => {
+    const c = caretAt.current;
+    if (c == null || !ref.current) return;
+    caretAt.current = null;
+    ref.current.setSelectionRange(c, c);
+  });
+
+  // The text box is focused inside the tap itself. A focus that waits (requestAnimationFrame, a timer) is no longer
+  // part of the tap, so the phone keyboard does not open.
+  const put = (tpl, key) => {
+    const ta = ref.current;
+    const s = ta ? ta.selectionStart : src.length;
+    const e = ta ? ta.selectionEnd : src.length;
+    const sel = src.slice(s, e);
+    const at = tpl.indexOf('|');
+    const body = at < 0 ? tpl : tpl.replace('|', sel);
+    caretAt.current = at < 0 ? s + body.length : s + at + sel.length;
+    setSrc(src.slice(0, s) + body + src.slice(e));
+    setPicked(key);
+    if (ta) ta.focus();
+  };
+  const show = (latex, key) => {
+    caretAt.current = latex.length;
+    setSrc(latex);
+    setPicked(key);
+    if (ref.current) ref.current.focus();
+  };
+  const keep = (e) => e.preventDefault(); // pressing a button must not take the cursor out of the box
+  const guide = exprGuide(src);
+  const on = (key) => (picked === key ? ' on' : '');
+
+  return (
+    <>
+      <div className="expr-tools">
+        {EXPR_TEMPLATES.map((b) => (
+          <button
+            key={b.t}
+            type="button"
+            className={`tbtn small${on('t:' + b.t)}`}
+            title={b.tip}
+            onMouseDown={keep}
+            onClick={() => put(b.v, 't:' + b.t)}
+          >
+            {b.t}
+          </button>
+        ))}
+      </div>
+      <div className="expr-tools sym">
+        {EXPR_SYMBOLS.map((c) => (
+          <button key={c} type="button" className={`tbtn small${on('s:' + c)}`} onMouseDown={keep} onClick={() => put(c, 's:' + c)}>
+            {c}
+          </button>
+        ))}
+      </div>
+      <textarea
+        ref={ref}
+        className="expr-in"
+        rows={3}
+        dir="ltr"
+        spellCheck={false}
+        value={src}
+        placeholder="বোতাম চেপে ঘর বসান, তারপর ঘরের ভেতরে লিখুন"
+        onChange={(e) => setSrc(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) onEnter();
+        }}
+      />
+      <div className="math-box">
+        <span className="muted">প্রিভিউ:</span>
+        <div className="expr-prev">
+          <span className="mi mi-ex" dangerouslySetInnerHTML={{ __html: exprHTML(src, true) }} />
+        </div>
+      </div>
+      {guide.length > 0 && (
+        <ul className="expr-guide">
+          {guide.map((g) => (
+            <li key={g.key}>
+              <b>{g.sym}</b> — {g.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="muted">
+        ঘরের ভেতরে আবার ঘর বসানো যায়: যেমন ভগ্নাংশের লবে বন্ধনী, বন্ধনীর ভেতরে আরেকটি ভগ্নাংশ, পুরোটার ওপরে মূল। প্রথমে লেখা সিলেক্ট করে বোতাম চাপলে সেই লেখা ঘরের ভেতরে ঢুকে যায়।
+        ঘাত একাধিক চিহ্নের হলে <b>{'{ }'}</b> এর ভেতরে লিখুন, যেমন <b>x^{'{n+1}'}</b>। ছোট ঘাত শুধু অঙ্ক হলে সোজা <b>x^10</b> লিখলেই হয়।
+      </p>
+      <div className="expr-tools">
+        <span className="tb-label">উদাহরণ:</span>
+        {EXPR_EXAMPLES.map((x) => (
+          <button key={x.t} type="button" className={`tbtn small${on('e:' + x.t)}`} onMouseDown={keep} onClick={() => show(x.v, 'e:' + x.t)}>
+            {x.t}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
 function MathDialog({ init, editing, onClose, onApply }) {
   // an old accent mark opens as an underbar with its text as the first line
   const [kind, setKind] = useState(init.kind === 'acc' ? 'ubar' : init.kind);
@@ -1330,6 +1501,7 @@ function MathDialog({ init, editing, onClose, onApply }) {
   const [num, setNum] = useState(init.num);
   const [den, setDen] = useState(init.den);
   const [val, setVal] = useState(init.val);
+  const [src, setSrc] = useState(init.src || ''); // equation text (kind 'expr')
   // underbar: one text box per line (the bar goes under the last line)
   const [rows, setRows] = useState(() =>
     (init.kind === 'ubar' || init.kind === 'acc') && init.val ? String(init.val).split('\n') : ['', '', '']
@@ -1353,6 +1525,7 @@ function MathDialog({ init, editing, onClose, onApply }) {
   const fill = (v) => (plainMath(v) ? v : '□');
   const a = {
     kind,
+    src,
     whole: plainMath(whole) ? whole : '',
     num: fill(num),
     den: fill(den),
@@ -1371,7 +1544,9 @@ function MathDialog({ init, editing, onClose, onApply }) {
         ? plainMath(val)
         : kind === 'ubar'
           ? rowsClean.length > 0
-          : false;
+          : kind === 'expr'
+            ? exprHasContent(src)
+            : false;
   const submit = () => ok && onApply({ ...a, num, den, val: kind === 'ubar' ? a.val : val, whole });
 
   // superscript / subscript / normal on the field the teacher is in
@@ -1393,7 +1568,7 @@ function MathDialog({ init, editing, onClose, onApply }) {
 
   return (
     <Modal
-      title={editing ? 'ভগ্নাংশ / মূল পরিবর্তন' : 'ভগ্নাংশ / বর্গমূল যোগ করুন'}
+      title={kind === 'expr' ? (editing ? 'সমীকরণ পরিবর্তন' : 'সমীকরণ বানান') : editing ? 'ভগ্নাংশ / মূল পরিবর্তন' : 'ভগ্নাংশ / বর্গমূল যোগ করুন'}
       onClose={onClose}
       actions={
         <>
@@ -1409,6 +1584,7 @@ function MathDialog({ init, editing, onClose, onApply }) {
           ধরন বাছুন
           <select className="sizesel" value={kind} onChange={(e) => setKind(e.target.value)} style={{ width: '100%', marginTop: 4 }}>
             <option value="plain">সাধারণ (এখনো কিছু বসবে না)</option>
+            <option value="expr">সমীকরণ (ভগ্নাংশ, মূল, বন্ধনী, ঘাত একসাথে)</option>
             <option value="frac">ভগ্নাংশ</option>
             <option value="sqrt">বর্গমূল √</option>
             <option value="ubar">নিচে দাগ (আন্ডারবার)</option>
@@ -1417,10 +1593,10 @@ function MathDialog({ init, editing, onClose, onApply }) {
       </div>
 
       {kind === 'plain' && (
-        <p className="muted">উপরের তালিকা থেকে ভগ্নাংশ বা বর্গমূল বাছুন। তারপর সেই ঘর খুলবে।</p>
+        <p className="muted">উপরের তালিকা থেকে সমীকরণ, ভগ্নাংশ বা বর্গমূল বাছুন। তারপর সেই ঘর খুলবে।</p>
       )}
 
-      {kind !== 'plain' && kind !== 'ubar' && (
+      {kind !== 'plain' && kind !== 'ubar' && kind !== 'expr' && (
         <div className="mathbar" onMouseDown={(e) => e.preventDefault()}>
           <span className="tb-label">লেখা কোথায়:</span>
           <Btn active={pos === 'normal'} title="সাধারণ লেখা (ঘাত বা নিচে নয়)" onClick={() => choose('normal', 'removeFormat')}>সাধারণ</Btn>
@@ -1428,6 +1604,8 @@ function MathDialog({ init, editing, onClose, onApply }) {
           <Btn active={pos === 'sub'} title="নিচের ছোট সংখ্যা (x₂)" onClick={() => choose('sub', 'subscript')}>x<sub>₂</sub> নিচে</Btn>
         </div>
       )}
+
+      {kind === 'expr' && <ExprBox src={src} setSrc={setSrc} onEnter={submit} />}
 
       {kind === 'frac' && (
         <>
@@ -1517,7 +1695,7 @@ function MathDialog({ init, editing, onClose, onApply }) {
         </div>
       )}
 
-      {kind !== 'plain' && (
+      {kind !== 'plain' && kind !== 'expr' && (
         <>
         <div className="math-box">
           <span className="muted">প্রিভিউ:</span> <MathPreview a={a} />
@@ -1525,7 +1703,7 @@ function MathDialog({ init, editing, onClose, onApply }) {
         <p className="muted">
           {kind === 'ubar'
             ? 'লাইনগুলো লিখে দাগ বসান। Enter চাপলে নতুন লাইন আসবে, যত লাইন দরকার। পরে বদলাতে চাইলে পেপারে ডাবল ক্লিক করুন।'
-            : 'ঘরে লিখে সংখ্যা সিলেক্ট করুন, তারপর “ঘাত” বা “নিচে” চাপুন। পরে বদলাতে চাইলে পেপারে ভগ্নাংশের ওপর ডাবল ক্লিক করুন।'}
+            : 'ঘরে লিখে সংখ্যা সিলেক্ট করুন, তারপর “ঘাত” বা “নিচে” চাপুন। পরে বদলাতে চাইলে পেপারে ভগ্নাংশের ওপর ডাবল ক্লিক করুন। ভগ্নাংশের ভেতরে আবার ভগ্নাংশ, বন্ধনী বা মূল দরকার হলে ওপর থেকে “সমীকরণ” বাছুন।'}
         </p>
         </>
       )}
