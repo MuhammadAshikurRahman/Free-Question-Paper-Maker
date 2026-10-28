@@ -79,6 +79,29 @@ function makeStage(sheet, host, widthPx) {
       c.value = el.value;
     }
   });
+  // The marks boxes (<input class="qmark">) become plain text in the PDF copy. html2canvas cuts text that is taller
+  // than its box, and a Bangla vowel sign (ু, ূ) hangs below the line box, so the bottom of the digits was lost.
+  // The copy gets no fixed height, a taller line and room under the text; the margin takes that room back,
+  // so the question layout does not move.
+  cs.querySelectorAll('input.qmark').forEach((inp) => {
+    const span = document.createElement('span');
+    span.className = inp.className;
+    span.textContent = inp.value;
+    setImportant(span, {
+      display: 'block',
+      height: 'auto',
+      'min-height': '0px',
+      'line-height': '1.9',
+      padding: '0px 0px 0.45em 0px',
+      'margin-top': 'var(--qm-extra)',
+      'margin-bottom': '-0.45em',
+      overflow: 'visible',
+      'white-space': 'nowrap',
+      border: '0px',
+    });
+    if (!inp.value) span.style.setProperty('visibility', 'hidden', 'important'); // an empty box prints nothing
+    inp.replaceWith(span);
+  });
   cs.querySelectorAll('.tbgrip, .tbrot, .tbsz, .dropmark, .pinch-badge').forEach((el) => el.remove());
   cs.querySelectorAll('.imgsel, .mathsel, .csel, .focus').forEach((el) => el.classList.remove('imgsel', 'mathsel', 'csel', 'focus'));
   cs.querySelectorAll('[contenteditable]').forEach((el) => el.setAttribute('contenteditable', 'false'));

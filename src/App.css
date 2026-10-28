@@ -1,3 +1,7 @@
+/* মোবাইল Chrome নিজে থেকে লেখা বড় করে (text autosizing); তাতে input-এর লেখা বক্সের চেয়ে বড় হয়ে PDF-এ কেটে যেত।
+   সব জায়গায় এটা বন্ধ রাখা হলো, তাই মোবাইল ও PC-তে লেখার মাপ একই থাকে। */
+html, body, .sheet, .sheet *, .print-multi, .print-multi * { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+
 /* Bangla text uses Nikosh (public/fonts/Nikosh.ttf). English text uses Inter (the first font in the list),
    so every Bangla glyph falls through to Nikosh. */
 @font-face {
@@ -794,8 +798,14 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
   /* ---- ধাপ ২: input box ----
      box শুরু হয় প্রশ্নের প্রথম লাইনের উপর থেকে (margin-top = --qm-extra), ঠিক যেখানে প্রশ্নের লেখা শুরু।
      তাই মানের লেখা আর প্রশ্নের লেখা একই লাইনে থাকে, জায়গা কম হলেও উপরে ওঠে না। */
-  height: calc(var(--lh, 1.7) * 1em + 1px);
+  /* মোবাইল PDF-এ নম্বরের লেখা নিচে কেটে যেত (box-এর ভেতরের অংশ ছাঁটা হয়)।
+     তাই box ০.৮em লম্বা করা হলো, লেখা আগের জায়গাতেই থাকে (top: -.4em), আর নিচের মার্জিন দিয়ে লেআউট আগের মতোই রাখা হলো। */
+  height: calc(var(--lh, 1.7) * 1em + .8em + 1px);
   margin-top: var(--qm-extra);
+  margin-bottom: -.8em;
+  top: -.4em;
+  padding: 0;
+  overflow: visible;
 }
 .qmark:focus { background: rgba(37, 99, 235, .08); border-bottom-color: var(--accent); }
 .qmark::placeholder { color: #94a3b8; font-weight: 400; }
@@ -1429,3 +1439,12 @@ body {
 /* equation preview: a line for each kind of box used, with what goes in it */
 .expr-guide { margin: 4px 0 10px; padding-left: 18px; font-size: 14px; line-height: 1.7; color: #334155; }
 .expr-guide b { font-family: ui-monospace, Consolas, monospace; color: #0f5132; }
+/* নম্বরের বক্স (সংখ্যা/মার্ক): ইংরেজি ফন্ট আর ইংরেজি ভাষা।
+   বাংলা ফন্টের স্বরচিহ্ন বক্সের বাইরে যায় বলে PDF-এ নিচের অংশ কাটত। বাংলা লিখলেও বক্স কাজ করবে। */
+input.qmark,
+.pdf-stage input.qmark {
+  font-family: Arial, "Liberation Sans", Helvetica, sans-serif !important;
+  direction: ltr;
+  unicode-bidi: isolate;
+  line-height: 1.4;
+}

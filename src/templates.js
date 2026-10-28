@@ -19,7 +19,7 @@ export const ol = (kind, items) =>
 export const q = (body = '', marks = '') =>
   `<div class="blk q" data-blk="q">` +
   `<span class="qno" contenteditable="false"></span>` +
-  `<input class="qmark" type="text" placeholder="নম্বর" aria-label="নম্বর" value="${esc(marks)}">` +
+  `<input class="qmark" lang="en" type="text" placeholder="নম্বর" aria-label="নম্বর" value="${esc(marks)}">` +
   `<div class="host qbody" contenteditable="true" data-ph="এখানে প্রশ্ন লিখুন...">${body || '<p><br></p>'}</div>` +
   `</div>`;
 
@@ -133,5 +133,3 @@ export const sampleDoc = () =>
     '১×৫ = ৫'
   ) +
   `</div>`;
-
-  

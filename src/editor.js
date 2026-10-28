@@ -757,6 +757,14 @@ export class Core {
   // A list is split item by item. A block with the "newpage" mark always starts a new page.
   // the page boxes are rebuilt: the screen must stay where it was (no jump while typing)
   reflow() {
+    // While a marks box (qmark) has the focus, the pages are not rebuilt: moving the box out of the DOM takes its
+    // focus to the question text. The rebuild waits until the focus leaves the box (see onFocusIn).
+    const cur = document.activeElement;
+    if (cur && cur.classList && cur.classList.contains('qmark') && this.root.contains(cur)) {
+      this.reflowWaiting = true;
+      return;
+    }
+    this.reflowWaiting = false;
     const snap = scrollSnap(this.root);
     // moving a question to another page takes the focus away from its marks box: remember it and give it back
     const ae = document.activeElement;
@@ -1130,6 +1138,11 @@ export class Core {
   // the marks box that has the focus (null when a line of text has it): a font or size change applies to that box
   onFocusIn(e) {
     const t = e.target;
+    // the focus has left a marks box: a page rebuild that was waited for can run now
+    if (this.reflowWaiting && !(t && t.classList && t.classList.contains('qmark'))) {
+      this.reflowWaiting = false;
+      setTimeout(() => this.reflow(), 0);
+    }
     if (t && t.classList && t.classList.contains('qmark')) this.qmarkNow = t;
     else if (this.hostOf(t)) this.qmarkNow = null;
   }
