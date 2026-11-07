@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { exportPdf, estimateCopyPercent } from './pdfExport';
 import { Core, toBn, toAscii, SHAPES, plainMath } from './editor.js';
 import { blankDoc, sampleDoc } from './templates.js';
+import { getPapers, putPapers, newId, fmtDate, papersFile, readPapersFile, saveBlob, getSchoolTpl, setSchoolTpl, canSharePdf, getPrintOpts, setPrintOpts } from './papers.js';
 import { Btn, Menu, Modal, MathPreview, Group } from './ui.jsx';
 import { Icon } from './icons.jsx';
 import { exprHTML, exprHasContent, exprGuide } from './mathExpr.js';
@@ -231,6 +232,17 @@ export default function App() {
   const core = () => coreRef.current;
   const D = (n) => (lang === 'en' ? String(n) : toBn(n));
   const page = PAGE[orient];
+  // print options (page numbers, footer, watermark) are also shown on the paper, as the PDF will have them
+  const [popts, setPopts] = useState(() => getPrintOpts());
+  const [paperH, setPaperH] = useState(0);
+  useEffect(() => {
+    const el = sheetRef.current;
+    if (el) setPaperH(el.offsetHeight);
+  }, [st, orient, lang, popts, margins, pageMode]);
+  const pageHpx = orient === 'landscape' ? 794 : 1123; // one A4 page at 96 px per inch
+  const pageCount = Math.max(1, Math.ceil(paperH / pageHpx));
+  const BN_DIG = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  const digitsOf = (n) => (lang === 'en' ? String(n) : String(n).replace(/\d/g, (d) => BN_DIG[+d]));
 
   // font: the chosen one, or the default for the paper language
   const fontCss =
@@ -464,11 +476,13 @@ export default function App() {
         margins: m,
         copies,
         stacked,
+        print: getPrintOpts(),
       });
-      const url = URL.createObjectURL(pdf.output('blob'));
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
       setPreview((old) => {
         if (old) URL.revokeObjectURL(old.url);
-        return { url, name: pdfFileName() };
+        return { url, name: pdfFileName(), blob };
       });
     } catch (e) {
       console.error(e);
@@ -503,6 +517,27 @@ export default function App() {
     document.body.appendChild(a);
     a.click();
     a.remove();
+  };
+
+  // the PDF in the preview goes to the phone's share sheet (WhatsApp, Messenger ...). Only on a phone or a browser that shares files.
+  const sharePreview = async () => {
+    if (!preview || !preview.blob) return;
+    const file = new File([preview.blob], preview.name || 'question-paper.pdf', { type: 'application/pdf' });
+    try {
+      await navigator.share({ files: [file], title: preview.name || 'প্রশ্নপত্র' });
+    } catch (e) {
+      if (e && e.name === 'AbortError') return; // the person closed the share menu
+      window.alert('শেয়ার করা যায়নি। "PDF ডাউনলোড" চাপুন, তারপর ফাইলটি WhatsApp বা Messenger-এ পাঠান।');
+    }
+  };
+
+  // open a saved paper in the editor (its own text, and its language)
+  const openPaper = (rec) => {
+    if (!window.confirm(`এখনকার পেপারের লেখা বদলে "${rec.name}" খুলবে। চালিয়ে যাবেন?`)) return;
+    core().load(rec.html);
+    setLang(rec.lang);
+    convertMarks(rec.lang);
+    setDlg(null);
   };
 
   const askPrint = () => setDlg({ type: 'print' });
@@ -689,9 +724,7 @@ export default function App() {
       <aside className={`side ${side ? 'open' : 'rail'}`} aria-label="টুলবার" onMouseDown={keepCaret} onClick={autoClose}>
         <div className="side-head">
           <b>টুলবার</b>
-          <button type="button" className="icon-btn" aria-label="বন্ধ করুন" onClick={() => changeSide(false)}>
-            <Icon name="x" />
-          </button>
+          <button type="button" className="tbtn" onClick={() => changeSide(false)}>বন্ধ</button>
         </div>
         <div className="side-scroll">
           <Group title="যোগ করুন" icon="plusSquare" open={groups.includes('insert')} onToggle={() => toggleGroup('insert')}>
@@ -700,9 +733,21 @@ export default function App() {
                 <Icon name="plus" />
                 <span>প্রশ্ন যোগ</span>
               </Btn>
+              <Btn className="tile" title="উদ্দীপকসহ সৃজনশীল প্রশ্ন (ক, খ, গ, ঘ)" onClick={() => core().addBlock('cq')}>
+                <Icon name="list" />
+                <span>সৃজনশীল</span>
+              </Btn>
+              <Btn className="tile set-btn" title="ক / খ সেট চালু বা বন্ধ করুন" onClick={() => core().toggleSets()}>
+                <Icon name="frame" />
+                <span>সেট</span>
+              </Btn>
               <Btn className="tile" title="বিভাগের শিরোনাম (যেমন: ক বিভাগ)" onClick={() => core().addBlock('sec')}>
                 <Icon name="heading" />
                 <span>বিভাগ</span>
+              </Btn>
+              <Btn className="tile" title="MCQ এর বৃত্ত শীট: রোল, রেজিস্ট্রেশন নম্বর ও উত্তরের বৃত্ত" onClick={() => setDlg({ type: 'omr' })}>
+                <Icon name="frame" />
+                <span>OMR শীট</span>
               </Btn>
               <Btn className="tile" title="নির্দেশনা বা যেকোনো লেখা" onClick={() => core().addBlock('note')}>
                 <Icon name="note" />
@@ -1052,6 +1097,30 @@ export default function App() {
                 <Icon name="doc" />
                 <span>উদাহরণ</span>
               </Btn>
+              <Btn
+                className="tile"
+                title="পেপার সেভ করে রাখুন, আবার খুলুন, অথবা ফাইলে নিন বা ফাইল থেকে আনুন"
+                onClick={() => setDlg({ type: 'papers', name: pdfFileName().replace(/\.pdf$/, '') })}
+              >
+                <Icon name="copy" />
+                <span>সেভ করা পেপার</span>
+              </Btn>
+              <Btn
+                className="tile"
+                title="স্কুলের নাম ও ঠিকানা সেভ করে রাখুন, এক ক্লিকে শিরোনামে বসান"
+                onClick={() => setDlg({ type: 'school', current: core().headerInfo() })}
+              >
+                <Icon name="heading" />
+                <span>স্কুলের টেমপ্লেট</span>
+              </Btn>
+              <Btn
+                className="tile"
+                title="পেজ নম্বর, ফুটার, ওয়াটারমার্ক এবং উত্তরপত্রের নাম/রোল/শাখার ঘর"
+                onClick={() => setDlg({ type: 'printopts', answerFields: core().hasAnswerFields() })}
+              >
+                <Icon name="panel" />
+                <span>ছাপার অপশন</span>
+              </Btn>
             </div>
             <div className="fld">
               <span className="fld-l">পেপারের ভাষা</span>
@@ -1224,6 +1293,21 @@ export default function App() {
         className="sheet-wrap"
         style={{ zoom: String(zoomNow), '--pw': page.w, '--ph': page.h, '--zi': String(1 / zoomNow) }}
       >
+        {(popts.pageNumbers || popts.footerText || popts.watermark) && (
+          <div className="paper-marks" aria-hidden="true" style={{ height: `${pageCount * pageHpx}px` }}>
+            {Array.from({ length: pageCount }, (_, k) => {
+              const parts = [];
+              if (popts.pageNumbers) parts.push(`${digitsOf(k + 1)}/${digitsOf(pageCount)}`);
+              if (popts.footerText) parts.push(popts.footerText);
+              return (
+                <div key={k} className="pm-page" style={{ top: `${k * pageHpx}px`, height: `${pageHpx}px` }}>
+                  {popts.watermark && <div className="pm-wm">{popts.watermark}</div>}
+                  {parts.length > 0 && <div className="pm-foot">{parts.join('     ')}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div
           ref={sheetRef}
           className={`sheet lang-${lang} ${orient}`}
@@ -1274,18 +1358,72 @@ export default function App() {
         />
       )}
       {dlg && dlg.type === 'print' && <PrintDialog onClose={() => setDlg(null)} onPrint={doPrint} onEstimate={estimateCopies} />}
+      {dlg && dlg.type === 'papers' && (
+        <PapersDialog
+          onClose={() => setDlg(null)}
+          currentName={dlg.name}
+          takeCurrent={() => {
+            core().flush();
+            return { html: core().cleanHTML(), lang };
+          }}
+          onOpen={openPaper}
+        />
+      )}
+      {dlg && dlg.type === 'school' && (
+        <SchoolDialog
+          onClose={() => setDlg(null)}
+          current={dlg.current}
+          onApply={(v) => {
+            core().setHeaderInfo(v);
+            setDlg(null);
+          }}
+        />
+      )}
+      {dlg && dlg.type === 'printopts' && (
+        <PrintOptsDialog
+          onClose={() => setDlg(null)}
+          answerFields={dlg.answerFields}
+          onApply={(opts, answer) => {
+            setPrintOpts(opts);
+            setPopts(opts);
+            core().setAnswerFields(answer);
+            setDlg(null);
+          }}
+        />
+      )}
+      {dlg && dlg.type === 'omr' && (
+        <OmrDialog
+          onClose={() => setDlg(null)}
+          onMake={(opts) => {
+            core().addBlock('omr', opts);
+            setDlg(null);
+          }}
+        />
+      )}
       {preview && (
         <Modal
           title="PDF প্রিভিউ"
           onClose={closePreview}
           actions={
             <>
-              <button className="tbtn" onClick={closePreview}>বন্ধ</button>
-              <button className="tbtn primary" onClick={downloadPreview}>PDF ডাউনলোড</button>
+              <button type="button" className="tbtn" onClick={closePreview}>বন্ধ</button>
+              {canSharePdf() ? (
+                <>
+                  <button className="tbtn" onClick={downloadPreview}>PDF ডাউনলোড</button>
+                  <button className="tbtn primary icon-only" onClick={sharePreview} title="WhatsApp বা Messenger-এ শেয়ার" aria-label="WhatsApp বা Messenger-এ শেয়ার"><Icon name="share" /></button>
+                </>
+              ) : (
+                <button className="tbtn primary" onClick={downloadPreview}>PDF ডাউনলোড</button>
+              )}
             </>
           }
         >
           <iframe className="pdf-preview" src={preview.url} title="PDF প্রিভিউ" />
+          {canSharePdf() ? (
+            <p className="pdf-preview-hint">শেয়ার চাপলে ফোনের শেয়ার মেনু খুলবে। সেখান থেকে WhatsApp বা Messenger বাছুন।</p>
+          ) : (
+            <p className="pdf-preview-hint">এই ব্রাউজারে সরাসরি শেয়ার নেই। "PDF ডাউনলোড" চাপুন, তারপর ফাইলটি WhatsApp বা Messenger-এ পাঠান।</p>
+          )}
           <p className="pdf-preview-hint">প্রিভিউ না দেখা গেলে "PDF ডাউনলোড" চাপুন, তারপর ফাইলটি খুলুন।</p>
         </Modal>
       )}
@@ -1724,6 +1862,266 @@ function CopySizeNote({ pct, normal }) {
       {verdict}
       <small>লেখা কম থাকলে কপি স্বাভাবিক আকারে বসে। লেখা বেশি হলে কপি ছোট হয়ে যায়, অর্থাৎ ফন্ট ছোট হয়ে জুম আউটের মতো দেখায়।</small>
     </div>
+  );
+}
+
+// ---------- saved papers: keep them, open one, delete, or move them to a .json file ----------
+function PapersDialog({ onClose, currentName, takeCurrent, onOpen }) {
+  const [list, setList] = useState(() => getPapers());
+  const [name, setName] = useState(currentName || '');
+  const [msg, setMsg] = useState('');
+  const fileRef = useRef(null);
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  // returns true when the list was saved
+  const write = (next) => {
+    if (!putPapers(next)) {
+      setMsg('ব্রাউজারে আর জায়গা নেই। পেপার ফাইলে সেভ করে রাখুন, তারপর পুরনো কিছু মুছুন।');
+      return false;
+    }
+    setList(next);
+    return true;
+  };
+
+  const save = () => {
+    const clean = name.trim();
+    if (!clean) return setMsg('পেপারের নাম লিখুন।');
+    const cur = takeCurrent();
+    if (!cur.html) return setMsg('পেপার পাওয়া যায়নি।');
+    const rec = { id: newId(), name: clean, lang: cur.lang, html: cur.html, savedAt: new Date().toISOString() };
+    const same = list.find((p) => p.name === clean);
+    let next;
+    if (same) {
+      if (!window.confirm(`"${clean}" নামে আগে একটি পেপার সেভ করা আছে। সেটা এই পেপার দিয়ে বদলাবে?`)) return undefined;
+      next = list.map((p) => (p.name === clean ? { ...rec, id: p.id } : p));
+    } else {
+      next = [rec, ...list];
+    }
+    if (write(next)) setMsg(`"${clean}" সেভ হয়েছে।`);
+    return undefined;
+  };
+
+  const remove = (p) => {
+    if (!window.confirm(`"${p.name}" মুছে যাবে। চালিয়ে যাবেন?`)) return;
+    if (write(list.filter((x) => x.id !== p.id))) setMsg(`"${p.name}" মুছে গেছে।`);
+  };
+
+  const download = (items, fileName) => {
+    saveBlob(new Blob([papersFile(items)], { type: 'application/json' }), fileName);
+  };
+
+  const onFile = async (e) => {
+    const f = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!f) return;
+    let text;
+    try {
+      text = await f.text();
+    } catch (err) {
+      setMsg('ফাইলটি পড়া যায়নি।');
+      return;
+    }
+    const { papers, error } = readPapersFile(text);
+    if (error) return setMsg(error);
+    if (write([...papers, ...list])) setMsg(`${toBn(String(papers.length))} টি পেপার ইমপোর্ট হয়েছে।`);
+    return undefined;
+  };
+
+  return (
+    <Modal title="সেভ করা পেপার" onClose={onClose} actions={<button type="button" className="tbtn" onClick={onClose}>বন্ধ</button>}>
+      <div className="pp-sec">
+        <b>এই পেপার সেভ করুন</b>
+        <div className="pp-row-in">
+          <input
+            className="pp-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="পেপারের নাম, যেমন: বাংলা তৃতীয় শ্রেণি"
+            aria-label="পেপারের নাম"
+          />
+          <button className="tbtn primary" onClick={save}><Icon name="save" /><span>সেভ</span></button>
+        </div>
+      </div>
+
+      <div className="pp-sec">
+        <b>সেভ করা পেপার ({toBn(String(list.length))})</b>
+        {list.length === 0 && <p className="pp-empty">এখনো কোনো পেপার সেভ হয়নি।</p>}
+        <ul className="pp-list">
+          {list.map((p) => (
+            <li key={p.id} className="pp-item">
+              <div className="pp-meta">
+                <b>{p.name}</b>
+                <small>{fmtDate(p.savedAt)}</small>
+              </div>
+              <div className="pp-btns">
+                <button className="tbtn" onClick={() => onOpen(p)}><Icon name="open" /><span>খুলুন</span></button>
+                <button className="tbtn" onClick={() => download([p], `${p.name}.json`)}><Icon name="download" /><span>Json ফাইল ডাউনলোড</span></button>
+                <button className="tbtn" onClick={() => remove(p)}><Icon name="trash" /><span>মুছুন</span></button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="pp-sec">
+        <b>ফাইল হিসেবে</b>
+        <p className="pp-hint">
+          পেপার ফাইলে সেভ করে WhatsApp বা Messenger-এ পাঠালে অন্য ফোন বা কম্পিউটারে ইমপোর্ট করা যাবে।
+        </p>
+        <div className="pp-btns">
+          <button className="tbtn" disabled={!list.length} onClick={() => download(list, `papers-${stamp}.json`)}>
+            সব পেপার ফাইলে সেভ
+          </button>
+          <button className="tbtn" onClick={() => fileRef.current && fileRef.current.click()}>ফাইল থেকে ইমপোর্ট</button>
+          <input ref={fileRef} type="file" accept=".json,application/json" hidden onChange={onFile} />
+        </div>
+      </div>
+
+      {msg && <p className="pp-msg" role="status">{msg}</p>}
+    </Modal>
+  );
+}
+
+// ---------- school header template: the school name and the address, put into the header with one click ----------
+function SchoolDialog({ onClose, current, onApply }) {
+  const saved = getSchoolTpl();
+  const [school, setSchool] = useState(saved ? saved.school : current.school);
+  const [address, setAddress] = useState(saved ? saved.address : current.address);
+  const [msg, setMsg] = useState('');
+  const [hasSaved, setHasSaved] = useState(!!saved);
+
+  const save = () => {
+    const tpl = { school: school.trim(), address: address.trim() };
+    if (setSchoolTpl(tpl)) {
+      setHasSaved(true);
+      setMsg('টেমপ্লেট সেভ হয়েছে।');
+    } else {
+      setMsg('সেভ করা যায়নি।');
+    }
+  };
+
+  const forget = () => {
+    if (!window.confirm('সেভ করা স্কুলের টেমপ্লেট মুছে যাবে। চালিয়ে যাবেন?')) return;
+    setSchoolTpl(null);
+    setHasSaved(false);
+    setMsg('টেমপ্লেট মুছে গেছে।');
+  };
+
+  return (
+    <Modal
+      title="স্কুলের টেমপ্লেট"
+      onClose={onClose}
+      actions={
+        <>
+          <button className="tbtn" onClick={onClose}>বাতিল</button>
+          <button className="tbtn" onClick={save}>টেমপ্লেট সেভ</button>
+          <button className="tbtn primary" onClick={() => onApply({ school: school.trim(), address: address.trim() })}>
+            পেপারে বসান
+          </button>
+        </>
+      }
+    >
+      <label className="pp-field">
+        <span>স্কুলের নাম</span>
+        <input className="pp-input" value={school} onChange={(e) => setSchool(e.target.value)} />
+      </label>
+      <label className="pp-field">
+        <span>ঠিকানা</span>
+        <input className="pp-input" value={address} onChange={(e) => setAddress(e.target.value)} />
+      </label>
+      <p className="pp-hint">
+        ঠিকানা শিরোনামের নিচের লাইনে (সেকশন / শাখার ঘরে) বসবে। বাকি শিরোনাম, বিষয় ও সময় বদলাবে না।
+      </p>
+      {hasSaved && (
+        <button className="linkbtn" onClick={forget}>সেভ করা টেমপ্লেট মুছুন</button>
+      )}
+      {msg && <p className="pp-msg" role="status">{msg}</p>}
+    </Modal>
+  );
+}
+
+// ---------- ছাপার অপশন: পেজ নম্বর, ফুটার, ওয়াটারমার্ক, উত্তরপত্রের ঘর ----------
+function PrintOptsDialog({ onClose, answerFields, onApply }) {
+  const saved = getPrintOpts();
+  const [pageNumbers, setPageNumbers] = useState(saved.pageNumbers);
+  const [footerText, setFooterText] = useState(saved.footerText);
+  const [watermark, setWatermark] = useState(saved.watermark);
+  const [answer, setAnswer] = useState(!!answerFields);
+
+  return (
+    <Modal
+      title="ছাপার অপশন"
+      onClose={onClose}
+      actions={
+        <>
+          <button className="tbtn" onClick={onClose}>বাতিল</button>
+          <button
+            className="tbtn primary"
+            onClick={() => onApply({ pageNumbers, footerText: footerText.trim(), watermark: watermark.trim() }, answer)}
+          >
+            ঠিক আছে
+          </button>
+        </>
+      }
+    >
+      <label className="pp-check">
+        <input type="checkbox" checked={pageNumbers} onChange={(e) => setPageNumbers(e.target.checked)} />
+        <span>পৃষ্ঠা নম্বর দেখাও (পৃষ্ঠা ১/২)</span>
+      </label>
+      <label className="pp-field">
+        <span>ফুটার লেখা (প্রতি পাতার নিচে, ঐচ্ছিক)</span>
+        <input className="pp-input" value={footerText} onChange={(e) => setFooterText(e.target.value)} placeholder="যেমন: স্কুলের নাম বা পরীক্ষার নাম" />
+      </label>
+      <label className="pp-field">
+        <span>ওয়াটারমার্ক (প্রতি পাতায় হালকা লেখা, ঐচ্ছিক)</span>
+        <input className="pp-input" value={watermark} onChange={(e) => setWatermark(e.target.value)} placeholder="যেমন: নমুনা বা গোপনীয়" />
+      </label>
+      <label className="pp-check">
+        <input type="checkbox" checked={answer} onChange={(e) => setAnswer(e.target.checked)} />
+        <span>উত্তরপত্রের ঘর দেখাও (নাম, রোল, শাখা)</span>
+      </label>
+      <p className="pp-hint">এই অপশনগুলো ছাপা PDF-এ যাবে। প্রিভিউতেও দেখা যাবে।</p>
+    </Modal>
+  );
+}
+
+// ---------- OMR শীট: কয়টি প্রশ্ন, কয়টি অপশন, রোল ও রেজিস্ট্রেশনের অঙ্ক ----------
+function OmrDialog({ onClose, onMake }) {
+  const [q, setQ] = useState('20');
+  const [roll, setRoll] = useState('6');
+  const [reg, setReg] = useState('8');
+  const num = (v, min, max) => Math.min(max, Math.max(min, parseInt(v, 10) || min));
+
+  return (
+    <Modal
+      title="OMR বৃত্ত শীট"
+      onClose={onClose}
+      actions={
+        <>
+          <button className="tbtn" onClick={onClose}>বাতিল</button>
+          <button
+            className="tbtn primary"
+            onClick={() => onMake({ q: num(q, 1, 100), roll: num(roll, 1, 10), reg: num(reg, 1, 12) })}
+          >
+            শীট বানাও
+          </button>
+        </>
+      }
+    >
+      <label className="pp-field">
+        <span>প্রশ্ন সংখ্যা (১ থেকে ১০০)</span>
+        <input className="pp-input" type="number" min="1" max="100" value={q} onChange={(e) => setQ(e.target.value)} />
+      </label>
+      <label className="pp-field">
+        <span>রোল নম্বরের অঙ্ক সংখ্যা</span>
+        <input className="pp-input" type="number" min="1" max="10" value={roll} onChange={(e) => setRoll(e.target.value)} />
+      </label>
+      <label className="pp-field">
+        <span>রেজিস্ট্রেশন নম্বরের অঙ্ক সংখ্যা</span>
+        <input className="pp-input" type="number" min="1" max="12" value={reg} onChange={(e) => setReg(e.target.value)} />
+      </label>
+      <p className="pp-hint">প্রতি প্রশ্নে ক, খ, গ, ঘ — চারটি বৃত্ত থাকবে। শীটটি হেডারের নিচে যোগ হবে। প্রশ্ন বা অপশন বদলাতে হলে শীটটি মুছে নতুনটি যোগ করুন।</p>
+    </Modal>
   );
 }
 

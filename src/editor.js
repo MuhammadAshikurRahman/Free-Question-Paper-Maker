@@ -5,7 +5,8 @@
 // contentEditable region. Because hosts are separate, Enter/Backspace can never
 // break the structure of the paper. Question numbers come from CSS counters.
 
-import { BLOCKS, esc } from './templates.js';
+import { BLOCKS, esc, setBox, answerRow } from './templates.js';
+import { isBijoyPaste, bijoyToUnicode } from './bijoy.js';
 import { exprHTML } from './mathExpr.js';
 
 const HOST = '[contenteditable="true"]';
@@ -546,6 +547,8 @@ export class Core {
 
   restoreSel(s) {
     if (!s) return;
+    // typing in a marks box must not pull the focus out to the last text line
+    if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('qmark')) return;
     const host = this.hosts()[s.h];
     if (!host) return;
     const blocks = this.leafBlocks(host);
@@ -603,6 +606,8 @@ export class Core {
 
   // make sure the caret is back inside the paper (after a dialog / dropdown)
   ensureSel() {
+    // a marks box has the focus: the caret is in the box, not lost, so do not move it to the text
+    if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('qmark')) return;
     const sel = window.getSelection();
     if (sel && sel.rangeCount && this.hostOf(sel.anchorNode)) return;
     this.restoreSel(this.lastSel);
@@ -1019,6 +1024,27 @@ export class Core {
     });
   }
 
+  // the school name (first line) and the address line (the section line under it) of the header
+  headerInfo() {
+    const school = this.root.querySelector('.hdr > .line.c-big');
+    const address = this.root.querySelector('.hdr > .line.c-mid');
+    return {
+      school: school ? school.textContent.trim() : '',
+      address: address ? address.textContent.trim() : '',
+    };
+  }
+
+  // put the school name and the address into the header; the other header lines and the rest of the paper stay
+  setHeaderInfo({ school, address }) {
+    const big = this.root.querySelector('.hdr > .line.c-big');
+    const mid = this.root.querySelector('.hdr > .line.c-mid');
+    if (!big || !mid) return this.notice('শিরোনাম পাওয়া যায়নি।');
+    this.mutate(() => {
+      if (school !== undefined) big.textContent = school;
+      if (address !== undefined) mid.textContent = address;
+    });
+  }
+
   // ---------- toolbar state ----------
   state() {
     const sel = window.getSelection();
@@ -1107,6 +1133,8 @@ export class Core {
 
   // ---------- events ----------
   onSelChange() {
+    // the selection inside a marks box belongs to that box: nothing to move
+    if (document.activeElement && document.activeElement.classList && document.activeElement.classList.contains('qmark')) return;
     const sel = window.getSelection();
     // a selection that starts in one table cell and ends in another (a long-press drag on a phone)
     // picks every cell in the block between them, the same as a mouse drag
@@ -1242,7 +1270,10 @@ export class Core {
     const host = this.hostOf(e.target);
     if (!host) return; // e.g. the marks input: default paste is fine
     e.preventDefault();
-    let t = ((e.clipboardData || window.clipboardData).getData('text/plain') || '').replace(/\r/g, '');
+    const cd = e.clipboardData || window.clipboardData;
+    let t = (cd.getData('text/plain') || '').replace(/\r/g, '');
+    // SutonnyOMJ/Bijoy লেখা হলে এখানেই Unicode বাংলা হয়ে বসবে; Unicode লেখায় কিছু বদলাবে না
+    if (isBijoyPaste(cd.getData('text/html') || '', t)) t = bijoyToUnicode(t);
     if (host.classList.contains('val')) t = t.replace(/\n+/g, ' ');
     document.execCommand('insertText', false, t);
   }
@@ -1345,9 +1376,39 @@ export class Core {
     return b && this.root.contains(b) ? b : null;
   }
 
-  addBlock(kind) {
+  // ক / খ সেট বক্স চালু বা বন্ধ করা (পুরনো কাগজেও কাজ করবে)
+  toggleSets() {
+    const hdr = this.root.querySelector('.hdr');
+    if (!hdr) return;
+    this.mutate(() => {
+      if (!hdr.querySelector(':scope > .setbox')) hdr.append(htmlToEl(setBox('')));
+      hdr.dataset.sets = hdr.dataset.sets === '1' ? '0' : '1';
+    });
+  }
+
+  // the name / roll / section row under the header (for the answer script); on or off for this paper
+  // the name / roll row: a line of the header, between the Subject/Class row and the Time/Full Marks row
+  hasAnswerFields() {
+    return !!this.root.querySelector('.hdr .meta > .ansrow');
+  }
+
+  setAnswerFields(on) {
+    const meta = this.root.querySelector('.hdr .meta');
+    if (!meta || !!on === this.hasAnswerFields()) return;
+    this.mutate(() => {
+      if (on) {
+        meta.append(htmlToEl(answerRow()));
+        meta.classList.add('has-ans');
+      } else {
+        meta.querySelector(':scope > .ansrow')?.remove();
+        meta.classList.remove('has-ans');
+      }
+    });
+  }
+
+  addBlock(kind, opts) {
     const blocks = this.root.querySelector('.blocks');
-    const el = htmlToEl(BLOCKS[kind]());
+    const el = htmlToEl(BLOCKS[kind](opts));
     const cur = this.currentBlock();
     this.mutate(() => {
       if (cur) cur.after(el);

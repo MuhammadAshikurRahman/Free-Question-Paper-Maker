@@ -58,6 +58,7 @@ function setImportant(el, styles) {
 function makeStage(sheet, host, widthPx) {
   const wrap = sheet.parentElement; // the .sheet-wrap that holds the paper and its zoom
   const stage = wrap.cloneNode(true);
+  stage.querySelectorAll('.paper-marks').forEach((el) => el.remove()); // the screen marks are not copied
   stage.classList.add(STAGE);
   const cs = stage.querySelector('.sheet');
 
@@ -367,7 +368,72 @@ async function drawOnHost(host, fn) {
 //   host     an empty element in the app that is used for drawing (printMultiRef)
 //   landscape, margins (cm, { t, r, b, l }) the paper's own settings
 //   copies   1, 2 or 4; stacked = 2 copies one above the other
-export async function exportPdf({ sheet, host, landscape, margins, copies, stacked }) {
+// ---------- page numbers, footer text and watermark (added on top of every page) ----------
+// Bangla text cannot be written with the PDF's own fonts, so each line is drawn on a small canvas with the app's
+// font and placed as a picture. The watermark is faint and turned at an angle, drawn over the page.
+const SCALE_TEXT = 3; // the picture is drawn at 3x for sharp print
+const bodyFont = () => getComputedStyle(document.body).fontFamily || 'sans-serif';
+
+function textPng(text, { px, color, alpha = 1, angle = 0 }) {
+  const font = `${px}px ${bodyFont()}`;
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = font;
+  const tw = probe.measureText(text).width;
+  const th = px * 1.4;
+  const rad = (angle * Math.PI) / 180;
+  const pad = px * 0.5;
+  const w = Math.ceil(Math.abs(tw * Math.cos(rad)) + Math.abs(th * Math.sin(rad)) + pad * 2);
+  const h = Math.ceil(Math.abs(tw * Math.sin(rad)) + Math.abs(th * Math.cos(rad)) + pad * 2);
+  const c = document.createElement('canvas');
+  c.width = w * SCALE_TEXT;
+  c.height = h * SCALE_TEXT;
+  const ctx = c.getContext('2d');
+  ctx.scale(SCALE_TEXT, SCALE_TEXT);
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(rad);
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 0, 0);
+  return { url: c.toDataURL('image/png'), w, h }; // w, h in CSS px
+}
+
+const BN_DIGIT = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+const bnNum = (n) => String(n).replace(/\d/g, (d) => BN_DIGIT[+d]);
+
+// print = { pageNumbers, footerText, watermark } (all optional)
+function stampPages(pdf, print, bnDigits) {
+  if (!print) return;
+  const { pageNumbers, footerText, watermark } = print;
+  const digits = (n) => (bnDigits ? bnNum(n) : String(n));
+  if (!pageNumbers && !footerText && !watermark) return;
+  const total = pdf.internal.getNumberOfPages();
+  const W = pdf.internal.pageSize.getWidth();
+  const H = pdf.internal.pageSize.getHeight();
+  for (let i = 1; i <= total; i += 1) {
+    pdf.setPage(i);
+    if (watermark) {
+      const img = textPng(watermark, { px: 64, color: '#000000', alpha: 0.08, angle: -30 });
+      const wm = img.w / PX_PER_MM;
+      const hm = img.h / PX_PER_MM;
+      pdf.addImage(img.url, 'PNG', (W - wm) / 2, (H - hm) / 2, wm, hm);
+    }
+    const parts = [];
+    if (pageNumbers) parts.push(`${digits(i)}/${digits(total)}`);
+    if (footerText) parts.push(footerText);
+    if (parts.length) {
+      const img = textPng(parts.join('     '), { px: 13, color: '#333333' });
+      const wm = img.w / PX_PER_MM;
+      const hm = img.h / PX_PER_MM;
+      pdf.addImage(img.url, 'PNG', (W - wm) / 2, H - 7 - hm, wm, hm);
+    }
+  }
+}
+
+// print (optional): the page numbers, footer and watermark options (see stampPages)
+export async function exportPdf({ sheet, host, landscape, margins, copies, stacked, print }) {
   if (!sheet || !host) throw new Error('paper not found');
   const paper = copies > 1 ? copiesPaper(copies, stacked) : landscape ? 'landscape' : 'portrait';
   const P = PAPER_MM[paper];
@@ -378,6 +444,7 @@ export async function exportPdf({ sheet, host, landscape, margins, copies, stack
     const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: paper });
     if (copies > 1) await drawCopies(pdf, sheet, host, { paper, copies, stacked: !!stacked, m });
     else await drawSingle(pdf, sheet, host, { paper, pageW, pageH, m });
+    stampPages(pdf, print, !sheet.classList.contains('lang-en'));
     return pdf;
   });
 }

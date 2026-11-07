@@ -33,7 +33,72 @@ export const note = (body = '') =>
   `<div class="host" contenteditable="true" data-ph="এখানে নির্দেশনা বা যেকোনো লেখা লিখুন...">${body || '<p><br></p>'}</div>` +
   `</div>`;
 
-export const BLOCKS = { q, sec, note };
+// সৃজনশীল প্রশ্ন: উদ্দীপক + ক, খ, গ, ঘ (নম্বর ১, ২, ৩, ৪) = মোট ১০
+export const creative = () =>
+  q(
+    p('উদ্দীপকটি পড় এবং প্রশ্নের উত্তর দাও :') +
+      p('উদ্দীপক :') +
+      p('') +
+      ol('bn', ['প্রশ্ন লিখুন (১)', 'প্রশ্ন লিখুন (২)', 'প্রশ্ন লিখুন (৩)', 'প্রশ্ন লিখুন (৪)']),
+    '১০'
+  );
+
+// ---------- উত্তরপত্রের ঘর: নাম, রোল, শাখা (হেডারের নিচে, চালু করলে) ----------
+export const answerRow = () =>
+  `<div class="ansrow" contenteditable="false">` +
+  `<span class="af af-name"><span class="lb bn">নাম :</span><span class="fill"></span></span>` +
+  `<span class="af af-sec"><span class="lb bn">শাখা :</span><span class="fill"></span></span>` +
+  `<span class="af af-roll"><span class="lb bn">রোল :</span><span class="fill"></span></span>` +
+  `</div>`;
+
+// ---------- MCQ এর OMR বৃত্ত শীট: রোল, রেজিস্ট্রেশন নম্বর ও প্রশ্নের উত্তর ----------
+const BN_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+const bnNum = (n) => String(n).replace(/\d/g, (d) => BN_DIGITS[+d]);
+const clampInt = (v, min, max, def) => {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : def;
+};
+
+// one column of digit bubbles 0-9 (a box on top to write the digit)
+const digitCols = (n) => {
+  let out = '';
+  for (let c = 0; c < n; c += 1) {
+    out +=
+      `<div class="omr-col"><span class="omr-box"></span>` +
+      BN_DIGITS.map((d, i) => `<span class="bub" data-v="${i}">${d}</span>`).join('') +
+      `</div>`;
+  }
+  return out;
+};
+
+export const omr = (opts = {}) => {
+  const q = clampInt(opts.q, 1, 100, 20);
+  const roll = clampInt(opts.roll, 1, 10, 6);
+  const reg = clampInt(opts.reg, 1, 12, 8);
+  const letters = ['ক', 'খ', 'গ', 'ঘ']; // the MCQ bubbles are always ক, খ, গ, ঘ (4 options)
+  let qs = '';
+  for (let i = 1; i <= q; i += 1) {
+    qs +=
+      `<div class="omr-q"><span class="omr-n">${bnNum(i)}.</span>` +
+      letters.map((L) => `<span class="bub" data-v="${L}">${L}</span>`).join('') +
+      `</div>`;
+  }
+  return (
+    `<div class="blk omr" data-blk="omr">` +
+    `<div class="host line omr-title" contenteditable="true" data-ph="শিরোনাম, যেমন: বহুনির্বাচনী প্রশ্নের উত্তরপত্র">বহুনির্বাচনী প্রশ্নের উত্তরপত্র</div>` +
+    `<div class="omr-body" contenteditable="false">` +
+    `<p class="omr-note">বৃত্ত সম্পূর্ণ ভরাট করো। ভুল হলে বৃত্তটি কেটে নতুন বৃত্ত ভরাট করো।</p>` +
+    `<div class="omr-top">` +
+    `<div class="omr-part"><div class="omr-lbl">রোল নম্বর</div><div class="omr-cols">${digitCols(roll)}</div></div>` +
+    `<div class="omr-part"><div class="omr-lbl">রেজিস্ট্রেশন নম্বর</div><div class="omr-cols">${digitCols(reg)}</div></div>` +
+    `</div>` +
+    `<div class="omr-lbl">উত্তর</div>` +
+    `<div class="omr-qs">${qs}</div>` +
+    `</div></div>`
+  );
+};
+
+export const BLOCKS = { q, sec, note, cq: creative, omr };
 
 // ---------- header ----------
 const line = (cls, ph, text = '') =>
@@ -43,10 +108,16 @@ const meta = (bn, en, ph, text = '', total = false) =>
   `<div class="mrow"><span class="lb bn">${bn} :</span><span class="lb en">${en} :</span> ` +
   `<span class="host line val" contenteditable="true" data-ph="${esc(ph)}"${total ? ' data-total="1"' : ''}>${esc(text)}</span></div>`;
 
+// ক / খ সেট: হেডারের উপরে ডানে বক্স, চালু থাকলেই দেখা যাবে
+export const setBox = (text = '') =>
+  `<div class="setbox" contenteditable="false"><span class="lb bn">সেট :</span> ` +
+  `<span class="host line val" contenteditable="true" data-ph="সেট">${esc(text)}</span></div>`;
+
 // Layout follows the school's own paper: name / section / exam centred,
 // then Subject, Class, Time on the left and Full Marks on the right.
 export const header = (v = {}) =>
-  `<div class="hdr">` +
+  `<div class="hdr" data-sets="0">` +
+  setBox(v.set) +
   line('c-big', 'বিদ্যালয়ের নাম লিখুন', v.school) +
   line('c-mid', 'সেকশন / শাখা (ঐচ্ছিক)', v.section) +
   line('c-mid', 'পরীক্ষার নাম, যেমন: অর্ধবার্ষিক পরীক্ষা, ২০২৬', v.exam) +

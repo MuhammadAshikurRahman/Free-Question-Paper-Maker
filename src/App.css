@@ -448,7 +448,7 @@ select.langsel:focus-visible, select.sizesel:focus-visible, select.fontsel:focus
 /* ================= A4 sheet =================
    --pw / --ph (page width / height) come from the portrait or landscape choice,
    set on .sheet-wrap in App.jsx. */
-.sheet-wrap { width: var(--pw, 210mm); margin: 0 auto; }
+.sheet-wrap { width: var(--pw, 210mm); margin: 0 auto; position: relative; }
 .sheet {
   width: var(--pw, 210mm);
   min-height: var(--ph, 297mm);
@@ -1448,3 +1448,94 @@ input.qmark,
   unicode-bidi: isolate;
   line-height: 1.4;
 }
+
+/* ক / খ সেট: হেডারের উপরে ডানে, ক্লাসের মতো (বর্ডার ছাড়া) */
+.hdr { position: relative; }
+.setbox {
+  position: absolute; top: 0; right: 0;
+  white-space: nowrap;
+  margin-top: 18px; margin-right: 10px;
+}
+.setbox .val { min-width: 1.5em; display: inline-block; }
+.hdr:not([data-sets="1"]) .setbox { display: none; }
+
+/* সেট চালু থাকলে সেট বাটন হাইলাইট থাকবে */
+body:has(.hdr[data-sets="1"]) .set-btn { background: var(--accent-soft); border-color: #9db8f5; color: var(--accent-d); font-weight: 700; }
+/* ---- saved papers and school template (dialogs) ---- */
+.pp-sec { border-top: 1px solid #dde3ee; padding: 12px 0 4px; }
+.pp-sec:first-of-type { border-top: 0; padding-top: 0; }
+.pp-sec > b { display: block; margin-bottom: 8px; }
+.pp-row-in { display: flex; gap: 8px; align-items: center; }
+.pp-input {
+  flex: 1; min-width: 0; min-height: 38px; padding: 6px 10px;
+  border: 1px solid #aab6c8; border-radius: 8px; font: inherit; font-size: 15px; background: #fff; color: inherit;
+}
+.pp-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.pp-field { display: block; margin-bottom: 10px; }
+.pp-field > span { display: block; font-weight: 700; margin-bottom: 4px; }
+.pp-field .pp-input { width: 100%; }
+.pp-list { list-style: none; margin: 0; padding: 0; }
+.pp-item {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 8px 0; border-bottom: 1px solid #eef1f6;
+}
+.pp-meta { display: flex; flex-direction: column; min-width: 0; }
+.pp-meta small { color: #667; }
+.pp-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.pp-hint { font-size: 13px; color: #556; margin: 0 0 8px; }
+.pp-empty { color: #667; margin: 6px 0; }
+.pp-msg { font-weight: 700; color: var(--accent-d); margin: 10px 0 0; }
+
+/* icon-only share button in the PDF preview */
+.tbtn.icon-only { padding: 0 11px; }
+.tbtn .ic { flex: none; }
+
+/* ---- ছাপার অপশন: চেক বক্স ---- */
+.pp-check { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px; font-weight: 600; cursor: pointer; }
+.pp-check input { width: 18px; height: 18px; }
+
+/* ---- OMR বৃত্ত শীট ---- */
+.omr { margin: 14px 0; }
+.omr-title { font-weight: 700; text-align: center; margin-bottom: 4px; }
+.omr-note { font-size: 13px; margin: 4px 0 10px; }
+.omr-top { display: flex; flex-wrap: wrap; gap: 18px 28px; margin-bottom: 10px; }
+.omr-lbl { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+.omr-cols { display: flex; gap: 6px; }
+.omr-col { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.omr-box { width: 16px; height: 16px; border: 1px solid #222; margin-bottom: 2px; }
+.omr-qs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px 14px; }
+.omr-q { display: flex; align-items: center; gap: 6px; }
+.omr-n { min-width: 26px; font-weight: 700; font-size: 13px; }
+.bub {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border: 1.3px solid #222; border-radius: 50%;
+  font-size: 9px; line-height: 1; background: #fff; color: #222;
+}
+.omr-col .bub { width: 15px; height: 15px; font-size: 8.5px; }
+
+/* ---- on-screen page marks (page number, footer, watermark) ---- */
+.paper-marks { position: absolute; left: 0; right: 0; top: 0; pointer-events: none; z-index: 3; }
+.pm-page { position: absolute; left: 0; right: 0; overflow: hidden; }
+.pm-wm {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  transform: rotate(-30deg); font-size: 64px; font-weight: 700; color: rgba(0, 0, 0, .08); white-space: nowrap;
+}
+.pm-foot { position: absolute; left: 0; right: 0; bottom: 7mm; text-align: center; font-size: 13px; color: #333; }
+
+/* =====================================================================
+   উত্তরপত্রের ঘর: নাম / শাখা / রোল — জায়গা বদলাতে এখানে পরিবর্তন করুন
+   ===================================================================== */
+/* পুরো লাইন: "padding-left" = নামের আগের ফাঁকা, "gap" = তিনটি ঘরের মাঝের ফাঁকা */
+.meta.has-ans > .ansrow { grid-column: 1 / -1; grid-row: 2; display: flex; align-items: flex-end; gap: 28px; margin-top: 16px; padding-left: 9px; }
+/* নাম: বাকি সব জায়গা নেয় (flex: 1 1 auto) */
+.ansrow .af-name { flex: 1 1 auto; }
+/* শাখা: মাঝারি, সাইজ বদলাতে "22%" বদলান */
+.ansrow .af-sec { flex: 0 0 22%; }
+/* রোল: সবচেয়ে ছোট, একেবারে ডানে; সাইজ বদলাতে "16%" বদলান */
+.ansrow .af-roll { flex: 0 0 16%; }
+/* ঘরের লেখা ও দাগ */
+.ansrow .af { display: flex; align-items: flex-end; gap: 6px; }
+.ansrow .fill { flex: 1; min-height: 20px; border-bottom: 1px solid #222; }
+/* বিষয়/শ্রেণি ও সময়/পূর্ণমান লাইনের মাঝে এই লাইনটি বসে (গ্রিডের দ্বিতীয় সারি) */
+.meta.has-ans .mright .mrow,
+.meta.has-ans .mleft .mrow:nth-child(3) { grid-row: 3; }
